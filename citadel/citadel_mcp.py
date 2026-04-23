@@ -272,6 +272,51 @@ async def citadel_update_entry(
 
 
 @mcp.tool()
+async def citadel_delete_entry(room: str, entry_id: str) -> str:
+    """
+    Permanently deletes a single entry from a room.
+    This is irreversible — use citadel_update_entry with status='archived' for soft-delete.
+    """
+    try:
+        existing = await db.query_one(
+            "SELECT id FROM entries WHERE id = ? AND room = ?", (entry_id, room)
+        )
+        if not existing:
+            return json.dumps({"error": f"Entry not found: {entry_id} in room {room}"})
+        now = _now()
+        await db.batch([
+            ("DELETE FROM entries WHERE id = ? AND room = ?", (entry_id, room)),
+            ("UPDATE rooms SET updated_on = ? WHERE name = ?", (now, room)),
+        ])
+        return json.dumps({"status": "deleted", "id": entry_id, "room": room})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
+async def citadel_delete_room(room: str) -> str:
+    """
+    Permanently deletes a room and all its entries.
+    This is irreversible. Returns the count of entries removed along with the room.
+    """
+    try:
+        existing = await db.query_one("SELECT name FROM rooms WHERE name = ?", (room,))
+        if not existing:
+            return json.dumps({"error": f"Room not found: {room}"})
+        count_row = await db.query_one(
+            "SELECT COUNT(*) AS n FROM entries WHERE room = ?", (room,)
+        )
+        entry_count = count_row["n"] if count_row else 0
+        await db.batch([
+            ("DELETE FROM entries WHERE room = ?", (room,)),
+            ("DELETE FROM rooms WHERE name = ?", (room,)),
+        ])
+        return json.dumps({"status": "deleted", "room": room, "entries_removed": entry_count})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
 async def citadel_search(
     query: str,
     room: Optional[str] = None,

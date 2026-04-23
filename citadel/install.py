@@ -19,10 +19,12 @@ def get_config_path() -> Path:
 ALWAYS_ALLOW = [
     "citadel_get_manifest",
     "citadel_add_room",
+    "citadel_delete_room",
     "citadel_get_room",
     "citadel_get_entry",
     "citadel_add_entry",
     "citadel_update_entry",
+    "citadel_delete_entry",
     "citadel_search",
 ]
 
