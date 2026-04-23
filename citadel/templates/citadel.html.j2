@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Citadel</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f0f0f;
+      color: #e0e0e0;
+      display: flex;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    /* Sidebar */
+    nav {
+      width: 240px;
+      min-width: 240px;
+      background: #1a1a1a;
+      border-right: 1px solid #2a2a2a;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    nav .brand {
+      padding: 20px 16px 14px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: #fff;
+      border-bottom: 1px solid #2a2a2a;
+    }
+
+    nav .meta {
+      padding: 8px 16px 10px;
+      font-size: 0.72rem;
+      color: #555;
+      border-bottom: 1px solid #2a2a2a;
+    }
+
+    nav .room-list {
+      overflow-y: auto;
+      flex: 1;
+      padding: 8px 0;
+    }
+
+    nav .room-list a {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 16px;
+      color: #aaa;
+      text-decoration: none;
+      font-size: 0.85rem;
+      transition: background 0.15s, color 0.15s;
+    }
+
+    nav .room-list a:hover {
+      background: #252525;
+      color: #fff;
+    }
+
+    nav .room-list .count {
+      font-size: 0.7rem;
+      background: #2a2a2a;
+      color: #666;
+      border-radius: 10px;
+      padding: 1px 7px;
+    }
+
+    /* Main content */
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 32px 40px;
+    }
+
+    .room-section {
+      margin-bottom: 56px;
+    }
+
+    .room-header {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin-bottom: 16px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #2a2a2a;
+    }
+
+    .room-header h2 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .room-header .room-meta {
+      font-size: 0.75rem;
+      color: #555;
+    }
+
+    .tag {
+      display: inline-block;
+      font-size: 0.68rem;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: #252525;
+      color: #888;
+      margin-right: 4px;
+    }
+
+    .tag.status-active    { background: #1a2e1a; color: #5c9e5c; }
+    .tag.status-archived  { background: #2a2a1a; color: #9e9e5c; }
+    .tag.status-deprecated{ background: #2e1a1a; color: #9e5c5c; }
+
+    .entry-card {
+      background: #1a1a1a;
+      border: 1px solid #252525;
+      border-radius: 8px;
+      padding: 18px 20px;
+      margin-bottom: 12px;
+      transition: border-color 0.15s;
+    }
+
+    .entry-card:hover { border-color: #3a3a3a; }
+
+    .entry-card summary {
+      cursor: pointer;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .entry-card summary::-webkit-details-marker { display: none; }
+
+    .entry-title-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .entry-title {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: #e8e8e8;
+    }
+
+    .entry-summary {
+      font-size: 0.82rem;
+      color: #888;
+      line-height: 1.5;
+    }
+
+    .entry-meta {
+      font-size: 0.7rem;
+      color: #444;
+    }
+
+    details[open] .entry-detail {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid #252525;
+      font-size: 0.83rem;
+      color: #bbb;
+      line-height: 1.7;
+      white-space: pre-wrap;
+      font-family: ui-monospace, monospace;
+    }
+
+    .no-entries {
+      font-size: 0.82rem;
+      color: #444;
+      font-style: italic;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="brand">Citadel</div>
+  <div class="meta">{{ total_rooms }} rooms &middot; {{ total_entries }} entries<br>{{ generated_at }}</div>
+  <div class="room-list">
+    {% for room in rooms %}
+    <a href="#room-{{ room.name }}">
+      {{ room.name }}
+      <span class="count">{{ room.entries | length }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</nav>
+
+<main>
+  {% for room in rooms %}
+  <section class="room-section" id="room-{{ room.name }}">
+    <div class="room-header">
+      <h2>{{ room.name }}</h2>
+      <span class="room-meta">updated {{ room.updated_on[:10] }}</span>
+      {% for tag in room.tags %}<span class="tag">{{ tag }}</span>{% endfor %}
+    </div>
+
+    {% if room.entries %}
+      {% for entry in room.entries %}
+      <details class="entry-card">
+        <summary>
+          <div class="entry-title-row">
+            <span class="entry-title">{{ entry.title }}</span>
+            <span class="tag status-{{ entry.status }}">{{ entry.status }}</span>
+            {% for tag in entry.tags %}<span class="tag">{{ tag }}</span>{% endfor %}
+          </div>
+          <div class="entry-summary">{{ entry.summary }}</div>
+          <div class="entry-meta">{{ entry.updated_on[:10] }}</div>
+        </summary>
+        <div class="entry-detail">{{ entry.detail }}</div>
+      </details>
+      {% endfor %}
+    {% else %}
+      <p class="no-entries">No entries in this room.</p>
+    {% endif %}
+  </section>
+  {% endfor %}
+</main>
+
+</body>
+</html>
