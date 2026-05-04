@@ -50,13 +50,13 @@ python citadel_mcp.py --http --host 0.0.0.0 --port 8000
 
 ### Local (stdio)
 
-Run `install.py` to register the server automatically:
+Run `install.py` from the repository root to register the server automatically:
 
 ```bash
-python install.py
+python install.py citadel
 ```
 
-This adds (or updates) the Citadel entry in your Claude Desktop config, including the `alwaysAllow` list so Claude Desktop does not prompt for approval on every tool call. Restart Claude Desktop after running.
+The script detects whether `python3` or `python` is available and uses whichever it finds. It reads `citadel/mcp.json` to determine the entry point and `alwaysAllow` list, then adds or updates the Citadel entry in your Claude Desktop config. Restart Claude Desktop after running.
 
 The resulting config entry looks like:
 
@@ -69,10 +69,12 @@ The resulting config entry looks like:
       "alwaysAllow": [
         "citadel_get_manifest",
         "citadel_add_room",
+        "citadel_delete_room",
         "citadel_get_room",
         "citadel_get_entry",
         "citadel_add_entry",
         "citadel_update_entry",
+        "citadel_delete_entry",
         "citadel_search"
       ]
     }
@@ -222,11 +224,12 @@ Full-text search across title, summary, and detail. Optionally scoped to a room 
 ## File Structure
 
 ```
+install.py         — registers MCP servers with Claude Desktop (repo root)
 citadel/
+  mcp.json         — install manifest (entry point + alwaysAllow list)
   citadel_mcp.py   — MCP server and tools
   db.py            — database abstraction (local SQLite + Turso backends)
   migrate.py       — copies local SQLite data into Turso
-  install.py       — registers the server with Claude Desktop
   requirements.txt — dependencies
   .env_example     — configuration template
   .env             — your local configuration (not committed)

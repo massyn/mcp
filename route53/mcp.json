@@ -1,0 +1,6 @@
+{
+  "script": "mcpdns.py",
+  "alwaysAllow": [
+    "check_domain_availability"
+  ]
+}
