@@ -25,6 +25,10 @@ _SCHEMA = [
     )""",
 ]
 
+_MIGRATIONS = [
+    "ALTER TABLE rooms ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]'",
+]
+
 
 class Database(Protocol):
     async def query(self, sql: str, params: Sequence[Any] = ()) -> list[dict]: ...
@@ -78,6 +82,11 @@ class LocalDatabase:
             with self._connect() as conn:
                 for stmt in _SCHEMA:
                     conn.execute(stmt)
+                for stmt in _MIGRATIONS:
+                    try:
+                        conn.execute(stmt)
+                    except sqlite3.OperationalError:
+                        pass  # column already exists
         await asyncio.to_thread(_run)
 
     async def close(self) -> None:
@@ -131,6 +140,11 @@ class TursoDatabase:
         # Turso plans and the statements are idempotent anyway.
         for stmt in _SCHEMA:
             await self.execute(stmt)
+        for stmt in _MIGRATIONS:
+            try:
+                await self.execute(stmt)
+            except Exception:
+                pass  # column already exists
 
     async def close(self) -> None:
         if self._client is not None:

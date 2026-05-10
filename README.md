@@ -2,6 +2,7 @@
 A collection of MCP services I am working on
 
 * [Citadel](./citadel/README.md) - a knowledge management system
+* [Publish S3](./publishs3/README.md) - publish HTML, markdown, and PDF to an S3 static website
 * [Route53](./route53/README.md) - check domain availability via AWS Route53
 
 ## Installation
@@ -10,10 +11,11 @@ Use `install.py` at the root to register any MCP server with Claude Desktop:
 
 ```bash
 python install.py citadel
+python install.py publishs3
 python install.py route53
 ```
 
-The script detects whether `python3` or `python` is available on your PATH and uses whichever it finds. Restart Claude Desktop after running.
+The script uses the interpreter that runs it (`sys.executable`), so the registered server always uses the same Python environment. Restart Claude Desktop after running.
 
 Config file locations:
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`

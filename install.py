@@ -19,10 +19,7 @@ def get_config_path() -> Path:
 
 
 def find_python() -> str:
-    for candidate in ("python3", "python"):
-        if shutil.which(candidate):
-            return candidate
-    sys.exit("No Python interpreter found on PATH.")
+    return sys.executable
 
 
 def load_manifest(name: str) -> tuple[Path, dict]:

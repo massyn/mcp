@@ -3,6 +3,7 @@
 import argparse
 import json
 import os
+import re
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -44,6 +45,24 @@ async def _lifespan(app):
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _slugify(name: str) -> str:
+    name = name.strip().lower()
+    name = re.sub(r"[^a-z0-9]+", "-", name)
+    return name.strip("-")
+
+
+async def _resolve_room(name: str) -> str | None:
+    """Return the canonical room name for a given name or alias, or None if not found."""
+    slug = _slugify(name)
+    row = await db.query_one("SELECT name FROM rooms WHERE name = ?", (slug,))
+    if row:
+        return row["name"]
+    row = await db.query_one(
+        "SELECT name FROM rooms WHERE aliases LIKE ?", (f'%"{slug}"%',)
+    )
+    return row["name"] if row else None
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +125,7 @@ async def citadel_get_manifest(tags: Optional[list[str]] = None) -> str:
     """
     try:
         rooms = await db.query(
-            "SELECT r.name, r.tags, r.updated_on, COUNT(e.id) AS entry_count "
+            "SELECT r.name, r.aliases, r.tags, r.updated_on, COUNT(e.id) AS entry_count "
             "FROM rooms r LEFT JOIN entries e ON e.room = r.name "
             "GROUP BY r.name ORDER BY r.updated_on DESC"
         )
@@ -115,6 +134,7 @@ async def citadel_get_manifest(tags: Optional[list[str]] = None) -> str:
             rooms = [r for r in rooms if tag_set.intersection(json.loads(r["tags"]))]
         for r in rooms:
             r["tags"] = json.loads(r["tags"])
+            r["aliases"] = json.loads(r.get("aliases") or "[]")
         return json.dumps({"rooms": rooms})
     except Exception as e:
         return json.dumps({"error": str(e)})
@@ -123,19 +143,23 @@ async def citadel_get_manifest(tags: Optional[list[str]] = None) -> str:
 @mcp.tool()
 async def citadel_add_room(name: str, tags: list[str] = []) -> str:
     """
-    Creates a new room. Returns success or an already-exists message.
+    Creates a new room. The name is normalised to a lowercase hyphenated slug;
+    the original name is stored as an alias. Returns success or an already-exists message.
     """
     try:
-        data = AddRoomInput(name=name, tags=tags)
-        existing = await db.query_one("SELECT name FROM rooms WHERE name = ?", (data.name,))
+        slug = _slugify(name)
+        if not slug:
+            return json.dumps({"error": "Room name must not be empty"})
+        existing = await _resolve_room(slug)
         if existing:
-            return json.dumps({"status": "exists", "room": data.name})
+            return json.dumps({"status": "exists", "room": existing})
+        aliases = json.dumps([name] if name != slug else [])
         now = _now()
         await db.execute(
-            "INSERT INTO rooms (name, tags, created_on, updated_on) VALUES (?, ?, ?, ?)",
-            (data.name, json.dumps(data.tags), now, now),
+            "INSERT INTO rooms (name, aliases, tags, created_on, updated_on) VALUES (?, ?, ?, ?, ?)",
+            (slug, aliases, json.dumps(tags), now, now),
         )
-        return json.dumps({"status": "created", "room": data.name})
+        return json.dumps({"status": "created", "room": slug})
     except Exception as e:
         return json.dumps({"error": str(e)})
 
@@ -149,6 +173,7 @@ async def citadel_get_room(room: str, status: str = "active") -> str:
     try:
         if status not in ("active", "archived", "deprecated"):
             return json.dumps({"error": f"Invalid status: {status}"})
+        room = await _resolve_room(room) or room
         room_row = await db.query_one("SELECT name FROM rooms WHERE name = ?", (room,))
         if not room_row:
             return json.dumps({"error": f"Room not found: {room}"})
@@ -195,12 +220,20 @@ async def citadel_add_entry(
     """
     try:
         data = AddEntryInput(room=room, title=title, summary=summary, detail=detail, tags=tags or [])
+        canonical = await _resolve_room(data.room)
+        if canonical:
+            room_aliases = "[]"
+            data = data.model_copy(update={"room": canonical})
+        else:
+            slug = _slugify(data.room)
+            room_aliases = json.dumps([data.room] if data.room != slug else [])
+            data = data.model_copy(update={"room": slug})
         now = _now()
         entry_id = str(uuid.uuid4())
         await db.batch([
             (
-                "INSERT OR IGNORE INTO rooms (name, tags, created_on, updated_on) VALUES (?, '[]', ?, ?)",
-                (data.room, now, now),
+                "INSERT OR IGNORE INTO rooms (name, aliases, tags, created_on, updated_on) VALUES (?, ?, '[]', ?, ?)",
+                (data.room, room_aliases, now, now),
             ),
             (
                 "INSERT INTO entries (id, room, title, summary, detail, tags, status, created_on, updated_on) "
@@ -300,6 +333,7 @@ async def citadel_delete_room(room: str) -> str:
     This is irreversible. Returns the count of entries removed along with the room.
     """
     try:
+        room = await _resolve_room(room) or room
         existing = await db.query_one("SELECT name FROM rooms WHERE name = ?", (room,))
         if not existing:
             return json.dumps({"error": f"Room not found: {room}"})
@@ -337,6 +371,7 @@ async def citadel_search(
         )
         params: list = [like, like, like]
         if room:
+            room = await _resolve_room(room) or room
             sql += " AND room = ?"
             params.append(room)
         sql += " ORDER BY updated_on DESC"

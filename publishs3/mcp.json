@@ -1,0 +1,9 @@
+{
+  "script": "publishs3_mcp.py",
+  "alwaysAllow": [
+    "list_themes",
+    "publish_html_to_s3",
+    "publish_markdown_to_s3",
+    "publish_pdf_to_s3"
+  ]
+}
