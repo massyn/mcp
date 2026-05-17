@@ -8,6 +8,7 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+import markdown as md_lib
 from dotenv import load_dotenv
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -26,12 +27,20 @@ _db_path = (
     else Path.home() / ".citadel" / "citadel.db"
 )
 
+_md = md_lib.Markdown(extensions=["extra", "nl2br"])
+
+
+def _render_md(text: str) -> str:
+    _md.reset()
+    return _md.convert(text or "")
+
+
 # ---------------------------------------------------------------------------
 # Data fetching
 # ---------------------------------------------------------------------------
 
 
-async def fetch_data() -> list[dict]:
+async def fetch_data() -> tuple[list[dict], list[dict]]:
     db = build_db(
         db_path=_db_path,
         turso_url=os.environ.get("TURSO_URL"),
@@ -50,10 +59,21 @@ async def fetch_data() -> list[dict]:
             )
             for entry in entries:
                 entry["tags"] = json.loads(entry["tags"] or "[]")
+                entry["detail_html"] = _render_md(entry["detail"])
             room["entries"] = entries
+
+        try:
+            todos = await db.query(
+                "SELECT id, room, title, detail, priority, due_date, status, entry_id "
+                "FROM todos "
+                "WHERE status NOT IN ('done', 'cancelled') "
+                "ORDER BY priority ASC, due_date ASC, created_on ASC"
+            )
+        except Exception:
+            todos = []
     finally:
         await db.close()
-    return rooms
+    return rooms, todos
 
 
 # ---------------------------------------------------------------------------
@@ -86,7 +106,8 @@ def main() -> None:
         print(f"Error: template not found: {template_path}", file=sys.stderr)
         sys.exit(1)
 
-    rooms = asyncio.run(fetch_data())
+    rooms, todos = asyncio.run(fetch_data())
+    total_entries = sum(len(r["entries"]) for r in rooms)
 
     env = Environment(
         loader=FileSystemLoader(str(template_path.parent)),
@@ -96,14 +117,19 @@ def main() -> None:
 
     rendered = template.render(
         rooms=rooms,
+        todos=todos,
         generated_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
         total_rooms=len(rooms),
-        total_entries=sum(len(r["entries"]) for r in rooms),
+        total_entries=total_entries,
+        total_todos=len(todos),
     )
 
     output_path = Path(args.output)
     output_path.write_text(rendered, encoding="utf-8")
-    print(f"Written to {output_path} ({len(rooms)} rooms, {sum(len(r['entries']) for r in rooms)} entries)")
+    print(
+        f"Written to {output_path} "
+        f"({len(rooms)} rooms, {total_entries} entries, {len(todos)} open todos)"
+    )
 
 
 if __name__ == "__main__":

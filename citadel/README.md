@@ -58,33 +58,9 @@ python install.py citadel
 
 The script detects whether `python3` or `python` is available and uses whichever it finds. It reads `citadel/mcp.json` to determine the entry point and `alwaysAllow` list, then adds or updates the Citadel entry in your Claude Desktop config. Restart Claude Desktop after running.
 
-The resulting config entry looks like:
-
-```json
-{
-  "mcpServers": {
-    "citadel": {
-      "command": "python",
-      "args": ["/path/to/citadel/citadel_mcp.py"],
-      "alwaysAllow": [
-        "citadel_get_manifest",
-        "citadel_add_room",
-        "citadel_delete_room",
-        "citadel_get_room",
-        "citadel_get_entry",
-        "citadel_add_entry",
-        "citadel_update_entry",
-        "citadel_delete_entry",
-        "citadel_search"
-      ]
-    }
-  }
-}
-```
-
 ### Network (HTTP)
 
-If Citadel is running in HTTP mode on another machine (or as a background service), add it to your Claude Desktop config manually as a URL-based server:
+If Citadel is running in HTTP mode on another machine (or as a background service), add it to your Claude Desktop config manually:
 
 ```json
 {
@@ -96,8 +72,6 @@ If Citadel is running in HTTP mode on another machine (or as a background servic
   }
 }
 ```
-
-Replace `<host>` with the IP or hostname of the machine running Citadel.
 
 Config file locations:
 - Windows: `%APPDATA%\Claude\claude_desktop_config.json`
@@ -122,8 +96,6 @@ Citadel supports two backends. It picks one at startup based on environment vari
 1. `DB_PATH` environment variable / `.env`
 2. Default: `~/.citadel/citadel.db`
 
-Supports `~` expansion. The directory is created automatically.
-
 **Turso** — set both variables in `.env`:
 
 ```
@@ -131,46 +103,62 @@ TURSO_URL=libsql://your-database.turso.io
 TURSO_TOKEN=your-auth-token-here
 ```
 
-`libsql-client` must be installed (included in `requirements.txt`).
-
 ### Migrating from local SQLite to Turso
-
-Once `TURSO_URL` and `TURSO_TOKEN` are configured in `.env`, run:
 
 ```bash
 python migrate.py
-```
-
-The script reads all rooms and entries from the local database, initialises the schema on Turso, and copies the data across. It uses `INSERT OR IGNORE`, so it is safe to run multiple times — existing records in Turso are left untouched.
-
-```bash
-python migrate.py --yes   # skip the confirmation prompt
+python migrate.py --yes   # skip confirmation
 ```
 
 ---
 
 ## How It Works
 
+### The Knowledge Model
+
+Citadel separates two distinct concerns: **knowledge** and **work**.
+
+**Entries are knowledge artifacts.** They capture decisions, rationale, context, patterns, and outcomes. They are the library — the Wikipedia of what was built and why. Entries are persistent and reference-oriented. They should never be structured as todo lists.
+
+**Todos are work items.** They are actionable, completable, and time-bound. They serve as a system of record for what was done and when. When a todo is completed, the linked entry should be updated to reflect the outcome — then the todo is marked done. The todo disappears from the active view; the entry absorbs the knowledge.
+
+**The relationship:** A todo may link to an entry (via `entry_id`) to provide context. Completing a todo should prompt updating the linked entry with outcomes before closing. An entry should never be the primary tracker of open work — that belongs in todos.
+
 ### Rooms
 
 A room is a named collection of related knowledge — a project, a domain, a topic area.
 
-Examples:
-- `citadel-mcp` — this project
-- `bike-rides` — motorcycle ride logs
-- `cooking` — recipes and food experiments
+Examples: `citadel-mcp`, `bike-rides`, `cooking`
 
-Rooms are created by the LLM when a conversation introduces something worth capturing. The Citadel starts empty and grows organically. Rooms have tags for cross-cutting navigation.
+Rooms are created organically as conversations introduce things worth capturing. They have tags for cross-cutting navigation. Room names are normalised to lowercase hyphenated slugs; the original name is stored as an alias.
 
 ### Entries
 
-A room contains entries. Each entry is a coherent unit of knowledge — not a catch-all blob.
+A room contains entries. Each entry is a coherent unit of knowledge — not a catch-all blob, and not an open work tracker.
 
-Entries are living documents. The LLM updates the same entry as a conversation develops. A new entry is only created when the conversation shifts into genuinely distinct territory.
+Entries are living documents. Update the same entry as a topic develops. Create a new entry only when the conversation shifts into genuinely distinct territory. Entry `detail` supports Markdown.
+
+Entry status values: `active`, `archived`, `deprecated`.
+
+### Todos
+
+A room also contains todo items. Each todo has a short integer ID (e.g. task 42) so it can be referenced conversationally.
+
+The workflow:
+1. Create a todo for actionable work, optionally linking it to a relevant entry via `entry_id`.
+2. Work the todo through its lifecycle: `open` → `in_progress` → `blocked` / `done` / `cancelled` / `deferred`.
+3. Before marking done: update the linked entry with the outcome. The entry absorbs the knowledge.
+4. Mark the todo done. It recedes from the active view.
+
+Todo priority: 1 (critical) to 5 (nice-to-have). Results sort by priority ascending, then due date, then creation time.
 
 ### The Manifest
 
-The manifest is the LLM's entry point. At the start of a conversation the LLM calls `citadel_get_manifest` to see what rooms exist, then selectively retrieves only what's relevant. This two-step pattern keeps token cost low.
+At the start of a conversation the LLM calls `citadel_get_manifest` to see what rooms exist, then selectively retrieves only what's relevant. This two-step pattern keeps token cost low.
+
+### Search
+
+`citadel_search` uses SQLite FTS5 for ranked full-text search across title, summary, and detail. Each search term is matched as a prefix (`pyth` matches `python`). Multiple words are treated as AND. Results are ordered by relevance.
 
 ---
 
@@ -180,57 +168,79 @@ All tools are prefixed `citadel_`.
 
 ### Manifest
 
-```
-citadel_get_manifest(tags: list[str] | None = None) -> str
-```
-Returns all rooms, optionally filtered by tags. Each room includes: name, tags, entry_count, updated_on.
+| Tool | Description |
+|------|-------------|
+| `citadel_get_manifest(tags?)` | All rooms, optionally filtered by tags (matches room tags and entry tags). |
 
 ### Room Operations
 
-```
-citadel_add_room(name: str, tags: list[str]) -> str
-```
-Creates a new room. Slug format names (e.g. `bike-rides`). No-ops gracefully if the room already exists.
-
-```
-citadel_get_room(room: str, status: str = "active") -> str
-```
-Returns all entries in a room at summary level — id, title, summary, tags, status, updated_on. No detail field.
+| Tool | Description |
+|------|-------------|
+| `citadel_add_room(name, tags?)` | Create a room. No-ops if already exists. |
+| `citadel_update_room(room, name?, tags?, add_aliases?)` | Rename, retag, or add aliases. Rename re-points all entries automatically. |
+| `citadel_delete_room(room)` | Permanently delete a room and all its entries. Irreversible. |
 
 ### Entry Operations
 
-```
-citadel_get_entry(room: str, entry_id: str) -> str
-```
-Returns a full entry including the detail field.
+| Tool | Description |
+|------|-------------|
+| `citadel_get_room(room, status?, limit?, offset?)` | Summary-level entry list (no detail). Paginated. |
+| `citadel_get_entry(entry_id, room?)` | Full entry including detail. `room` is optional. |
+| `citadel_add_entry(room, title, summary, detail, tags?)` | Create a knowledge entry. Auto-creates room. |
+| `citadel_bulk_add_entries(entries)` | Create multiple entries in one call. |
+| `citadel_update_entry(room, entry_id, title?, summary?, detail?, status?, tags?)` | Update any fields. |
+| `citadel_move_entry(entry_id, from_room, to_room)` | Move an entry between rooms. |
+| `citadel_delete_entry(room, entry_id)` | Permanently delete. Use `status='archived'` for soft-delete. |
 
-```
-citadel_add_entry(room: str, title: str, summary: str, detail: str, tags: list[str] | None = None) -> str
-```
-Creates a new entry. Auto-creates the room if it doesn't exist.
+### Todo Operations
 
-```
-citadel_update_entry(room: str, entry_id: str, summary: str | None, detail: str | None, status: str | None, tags: list[str] | None) -> str
-```
-Updates any combination of fields. Only provided fields are changed. Entry status values: `active`, `archived`, `deprecated`.
+| Tool | Description |
+|------|-------------|
+| `citadel_get_todos(room?, status?, priority_max?, due_before?, limit?)` | List todos. Defaults to `status=['open']`. Pass `[]` for all statuses. |
+| `citadel_get_todo(todo_id)` | Full todo by integer ID. |
+| `citadel_add_todo(room, title, detail?, priority?, due_date?, entry_id?)` | Create a work item. |
+| `citadel_update_todo(todo_id, title?, detail?, priority?, due_date?, status?, entry_id?)` | Update any fields. Update the linked entry before marking done. |
+| `citadel_delete_todo(todo_id)` | Permanently delete. Use `status='cancelled'` for soft-delete. |
 
+### Search
+
+| Tool | Description |
+|------|-------------|
+| `citadel_search(query, room?, tags?, status?, limit?)` | FTS5 ranked search. `status` defaults to `active`. |
+
+---
+
+## Offline Viewer
+
+```bash
+python offline_citadel.py
+python offline_citadel.py --output snapshot.html
 ```
-citadel_search(query: str, room: str | None = None, tags: list[str] | None = None) -> str
-```
-Full-text search across title, summary, and detail. Optionally scoped to a room or filtered by tags. Returns summary-level results.
+
+Generates a self-contained HTML file showing all rooms, entries (with Markdown rendered), and all non-closed todos sorted by priority.
 
 ---
 
 ## File Structure
 
 ```
-install.py         — registers MCP servers with Claude Desktop (repo root)
 citadel/
-  mcp.json         — install manifest (entry point + alwaysAllow list)
-  citadel_mcp.py   — MCP server and tools
-  db.py            — database abstraction (local SQLite + Turso backends)
-  migrate.py       — copies local SQLite data into Turso
-  requirements.txt — dependencies
-  .env_example     — configuration template
-  .env             — your local configuration (not committed)
+  citadel_mcp.py     — entry point (wiring only)
+  server.py          — shared MCP server and database instances
+  rooms.py           — room management tools
+  entries.py         — entry management tools
+  todos.py           — todo list tools
+  search.py          — FTS5 search tool
+  helpers.py         — shared utilities (_now, _slugify, _resolve_room)
+  models.py          — Pydantic input models
+  sql.py             — Jinja2 SQL template loader
+  db.py              — database abstraction (local SQLite + Turso backends)
+  offline_citadel.py — static HTML snapshot generator
+  migrate.py         — copies local SQLite data into Turso
+  requirements.txt   — dependencies
+  .env_example       — configuration template
+  .env               — your local configuration (not committed)
+  templates/
+    citadel.html.j2  — offline viewer template
+    sql/             — one SQL template per query (23 entry/room + 6 todo files)
 ```
