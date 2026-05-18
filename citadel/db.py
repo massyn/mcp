@@ -121,7 +121,10 @@ class LocalDatabase:
                         conn.execute(stmt)
                     except sqlite3.OperationalError:
                         pass  # column already exists
-                conn.execute("INSERT INTO entries_fts(entries_fts) VALUES('rebuild')")
+                try:
+                    conn.execute("INSERT INTO entries_fts(entries_fts) VALUES('rebuild')")
+                except sqlite3.OperationalError:
+                    pass  # FTS index in bad state; skip rebuild rather than crash on startup
         await asyncio.to_thread(_run)
 
     async def close(self) -> None:
@@ -180,7 +183,10 @@ class TursoDatabase:
                 await self.execute(stmt)
             except Exception:
                 pass  # column already exists
-        await self.execute("INSERT INTO entries_fts(entries_fts) VALUES('rebuild')")
+        try:
+            await self.execute("INSERT INTO entries_fts(entries_fts) VALUES('rebuild')")
+        except Exception:
+            pass  # FTS rebuild is non-critical
 
     async def close(self) -> None:
         if self._client is not None:
