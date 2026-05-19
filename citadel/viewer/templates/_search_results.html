@@ -1,0 +1,33 @@
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% elif not query %}
+<div class="text-center text-muted pt-5 mt-4">
+    <p>Enter a search term above.</p>
+</div>
+{% elif not results %}
+<p class="text-muted">No results for <strong>{{ query }}</strong>.</p>
+{% else %}
+<h6 class="text-muted small mb-3">{{ results|length }} result{{ 's' if results|length != 1 else '' }} for <strong>{{ query }}</strong></h6>
+<div class="list-group">
+    {% for r in results %}
+    <a class="list-group-item list-group-item-action py-2"
+       href="/entry/{{ r.id }}?room={{ r.room }}"
+       hx-get="/entry/{{ r.id }}?room={{ r.room }}"
+       hx-target="#main-content"
+       hx-push-url="true">
+        <div class="d-flex justify-content-between align-items-start">
+            <strong class="me-2">{{ r.title }}</strong>
+            <small class="text-muted flex-shrink-0">{{ r.room }}</small>
+        </div>
+        <p class="mb-1 text-muted small">{{ r.summary }}</p>
+        {% if r.tags %}
+        <div>
+            {% for tag in r.tags %}
+            <span class="badge bg-light text-dark border me-1">{{ tag }}</span>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </a>
+    {% endfor %}
+</div>
+{% endif %}

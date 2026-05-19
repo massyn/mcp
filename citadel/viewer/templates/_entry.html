@@ -1,0 +1,40 @@
+<div class="entry-detail" style="max-width: 860px;">
+    <nav aria-label="breadcrumb" class="mb-1">
+        <ol class="breadcrumb mb-1">
+            <li class="breadcrumb-item">
+                <a href="/room/{{ entry.room }}"
+                   hx-get="/room/{{ entry.room }}"
+                   hx-target="#main-content"
+                   hx-push-url="true">{{ entry.room }}</a>
+            </li>
+            <li class="breadcrumb-item active text-truncate">{{ entry.title }}</li>
+        </ol>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-start mb-2">
+        <h4 class="mb-0 me-2">{{ entry.title }}</h4>
+        <span class="badge flex-shrink-0 {% if entry.status == 'active' %}bg-success{% elif entry.status == 'archived' %}bg-secondary{% else %}bg-warning text-dark{% endif %}">
+            {{ entry.status }}
+        </span>
+    </div>
+
+    <p class="lead text-muted">{{ entry.summary }}</p>
+
+    {% if entry.tags %}
+    <div class="mb-3">
+        {% for tag in entry.tags %}
+        <span class="badge bg-primary me-1">{{ tag }}</span>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <hr>
+
+    <div id="entry-detail-md" class="prose" data-md="{{ entry.detail | e }}"></div>
+
+    <p class="text-muted small mt-4 border-top pt-2">
+        Updated {{ entry.updated_on[:10] }}
+        &nbsp;&middot;&nbsp;
+        <code class="text-muted">{{ entry.id }}</code>
+    </p>
+</div>
