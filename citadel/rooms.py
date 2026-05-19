@@ -110,6 +110,7 @@ async def citadel_update_room(
                 await db.batch([
                     (render("room_rename_insert.sql"), (new_name, json.dumps(current_aliases), json.dumps(new_tags), now, canonical)),
                     (render("room_rename_entries.sql"), (new_name, canonical)),
+                    (render("room_rename_todos.sql"), (new_name, canonical)),
                     (render("room_delete.sql"), (canonical,)),
                 ])
                 return json.dumps({"status": "updated", "room": new_name})
