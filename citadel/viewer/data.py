@@ -69,6 +69,30 @@ def get_tags(status: str = "active") -> list[tuple[str, int]]:
     return [(r["tag"], r["cnt"]) for r in rows]
 
 
+def get_velocity_data() -> dict:
+    rows = _run(db.query(
+        "SELECT strftime('%Y-W%W', completed_on) AS week, room, COUNT(*) AS n "
+        "FROM todos "
+        "WHERE status = 'done' AND completed_on IS NOT NULL "
+        "GROUP BY week, room "
+        "ORDER BY week, room"
+    ))
+    weeks: list[str] = []
+    rooms: list[str] = []
+    for r in rows:
+        if r["week"] not in weeks:
+            weeks.append(r["week"])
+        if r["room"] not in rooms:
+            rooms.append(r["room"])
+    rooms.sort()
+
+    counts: dict[str, dict[str, int]] = {room: {week: 0 for week in weeks} for room in rooms}
+    for r in rows:
+        counts[r["room"]][r["week"]] = r["n"]
+
+    return {"weeks": weeks, "rooms": rooms, "counts": counts}
+
+
 def get_entries_by_tag(tag: str, status: str = "active", limit: int = 50, offset: int = 0) -> dict:
     count_row = _run(db.query_one(
         "SELECT COUNT(DISTINCT e.id) AS n "

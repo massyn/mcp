@@ -24,16 +24,17 @@ _SCHEMA = [
         updated_on TEXT NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS todos (
-        id         INTEGER PRIMARY KEY,
-        room       TEXT NOT NULL REFERENCES rooms(name),
-        title      TEXT NOT NULL,
-        detail     TEXT,
-        priority   INTEGER NOT NULL DEFAULT 3,
-        due_date   TEXT,
-        status     TEXT NOT NULL DEFAULT 'open',
-        entry_id   TEXT REFERENCES entries(id),
-        created_on TEXT NOT NULL,
-        updated_on TEXT NOT NULL
+        id           INTEGER PRIMARY KEY,
+        room         TEXT NOT NULL REFERENCES rooms(name),
+        title        TEXT NOT NULL,
+        detail       TEXT,
+        priority     INTEGER NOT NULL DEFAULT 3,
+        due_date     TEXT,
+        status       TEXT NOT NULL DEFAULT 'open',
+        entry_id     TEXT REFERENCES entries(id),
+        completed_on TEXT,
+        created_on   TEXT NOT NULL,
+        updated_on   TEXT NOT NULL
     )""",
     "CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(title, summary, detail, content=entries, content_rowid=rowid)",
     """CREATE TRIGGER IF NOT EXISTS entries_ai AFTER INSERT ON entries BEGIN
@@ -54,6 +55,7 @@ _SCHEMA = [
 
 _MIGRATIONS = [
     "ALTER TABLE rooms ADD COLUMN aliases TEXT NOT NULL DEFAULT '[]'",
+    "ALTER TABLE todos ADD COLUMN completed_on TEXT",
 ]
 
 

@@ -125,6 +125,59 @@ async def citadel_update_room(
 
 
 @mcp.tool()
+async def citadel_merge_rooms(source: str, destination: str) -> str:
+    """
+    Merges a source room into a destination room.
+    All entries and todos from the source are moved to the destination.
+    The source room's aliases are absorbed into the destination.
+    The source room is deleted after the merge.
+    Returns counts of entries and todos moved.
+    """
+    try:
+        src = await _resolve_room(source)
+        if not src:
+            return json.dumps({"error": f"Source room not found: {source}"})
+
+        dst = await _resolve_room(destination)
+        if not dst:
+            return json.dumps({"error": f"Destination room not found: {destination}"})
+
+        if src == dst:
+            return json.dumps({"error": "Source and destination are the same room"})
+
+        entry_count_row = await db.query_one(render("room_entry_count.sql"), (src,))
+        entry_count = entry_count_row["n"] if entry_count_row else 0
+
+        src_row = await db.query_one(render("room_get_detail.sql"), (src,))
+        dst_row = await db.query_one(render("room_get_detail.sql"), (dst,))
+
+        src_aliases: list[str] = json.loads(src_row.get("aliases") or "[]")
+        dst_aliases: list[str] = json.loads(dst_row.get("aliases") or "[]")
+        dst_tags: list[str] = json.loads(dst_row.get("tags") or "[]")
+
+        for alias in [src] + src_aliases:
+            if alias not in dst_aliases and alias != dst:
+                dst_aliases.append(alias)
+
+        now = _now()
+        await db.batch([
+            (render("room_rename_entries.sql"), (dst, src)),
+            (render("room_rename_todos.sql"), (dst, src)),
+            (render("room_update.sql"), (json.dumps(dst_tags), json.dumps(dst_aliases), now, dst)),
+            (render("room_delete.sql"), (src,)),
+        ])
+
+        return json.dumps({
+            "status": "merged",
+            "source": src,
+            "destination": dst,
+            "entries_moved": entry_count,
+        })
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+
+@mcp.tool()
 async def citadel_delete_room(room: str) -> str:
     """
     Permanently deletes a room and all its entries.

@@ -151,7 +151,7 @@ async def citadel_update_todo(
         if priority is not None and priority not in range(1, 6):
             return json.dumps({"error": "priority must be between 1 and 5"})
 
-        existing = await db.query_one(render("todo_exists.sql"), (todo_id,))
+        existing = await db.query_one(render("todo_get.sql"), (todo_id,))
         if not existing:
             return json.dumps({"error": f"Todo not found: {todo_id}"})
 
@@ -167,6 +167,8 @@ async def citadel_update_todo(
             fields.append("due_date = ?"); values.append(due_date)
         if status is not None:
             fields.append("status = ?"); values.append(status)
+            if status == "done" and existing.get("completed_on") is None:
+                fields.append("completed_on = ?"); values.append(_now())
         if entry_id is not None:
             fields.append("entry_id = ?"); values.append(entry_id)
 

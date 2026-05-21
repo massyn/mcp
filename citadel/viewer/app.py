@@ -128,6 +128,12 @@ def todos_view():
     return render_template("todos.html", **ctx)
 
 
+@app.route("/velocity")
+def velocity_view():
+    velocity = data.get_velocity_data()
+    return render_template("velocity.html", **_index_ctx(velocity=velocity))
+
+
 @app.route("/search")
 def search_view():
     query = request.args.get("q", "").strip()

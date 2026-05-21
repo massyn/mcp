@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Velocity — Citadel{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    var weeks = {{ velocity.weeks | tojson }};
+    var rooms = {{ velocity.rooms | tojson }};
+    var counts = {{ velocity.counts | tojson }};
+
+    var palette = [
+        '#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f',
+        '#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac'
+    ];
+
+    var datasets = rooms.map(function (room, i) {
+        return {
+            label: room,
+            data: weeks.map(function (w) { return counts[room][w] || 0; }),
+            backgroundColor: palette[i % palette.length],
+        };
+    });
+
+    var ctx = document.getElementById('velocity-chart').getContext('2d');
+    new Chart(ctx, {
+        type: 'bar',
+        data: { labels: weeks, datasets: datasets },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'right' },
+                title: { display: false },
+            },
+            scales: {
+                x: { stacked: true, title: { display: true, text: 'Week' } },
+                y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'Todos completed' } },
+            },
+        },
+    });
+}());
+</script>
+{% endblock %}
+
+{% block content %}
+<h5 class="mb-3">Velocity</h5>
+{% if velocity.weeks %}
+<div style="max-height:480px">
+    <canvas id="velocity-chart"></canvas>
+</div>
+{% else %}
+<p class="text-muted">No completed todos with a <code>completed_on</code> timestamp yet.</p>
+{% endif %}
+{% endblock %}
