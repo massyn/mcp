@@ -32,7 +32,10 @@ def init_schema() -> None:
 
 
 def get_manifest(tags: Optional[list] = None) -> dict:
-    return json.loads(_run(citadel_get_manifest(tags=tags)))
+    result = json.loads(_run(citadel_get_manifest(tags=tags)))
+    if "rooms" in result:
+        result["rooms"] = sorted(result["rooms"], key=lambda r: r["name"].lower())
+    return result
 
 
 def get_room(room: str, status: str = "active", limit: int = 50, offset: int = 0) -> dict:
@@ -69,14 +72,22 @@ def get_tags(status: str = "active") -> list[tuple[str, int]]:
     return [(r["tag"], r["cnt"]) for r in rows]
 
 
-def get_velocity_data() -> dict:
-    rows = _run(db.query(
-        "SELECT strftime('%Y-W%W', completed_on) AS week, room, COUNT(*) AS n "
-        "FROM todos "
-        "WHERE status = 'done' AND completed_on IS NOT NULL "
-        "GROUP BY week, room "
-        "ORDER BY week, room"
-    ))
+def get_velocity_data(room: Optional[str] = None) -> dict:
+    if room:
+        rows = _run(db.query(
+            "SELECT strftime('%Y-W%W', completed_on) AS week, room, COUNT(*) AS n "
+            "FROM todos "
+            "WHERE status = 'done' AND completed_on IS NOT NULL AND room = ? "
+            "GROUP BY week, room ORDER BY week, room",
+            (room,),
+        ))
+    else:
+        rows = _run(db.query(
+            "SELECT strftime('%Y-W%W', completed_on) AS week, room, COUNT(*) AS n "
+            "FROM todos "
+            "WHERE status = 'done' AND completed_on IS NOT NULL "
+            "GROUP BY week, room ORDER BY week, room"
+        ))
     weeks: list[str] = []
     rooms: list[str] = []
     for r in rows:
@@ -91,6 +102,41 @@ def get_velocity_data() -> dict:
         counts[r["room"]][r["week"]] = r["n"]
 
     return {"weeks": weeks, "rooms": rooms, "counts": counts}
+
+
+def get_open_heatmap(room: Optional[str] = None) -> dict:
+    params_room = (room,) if room else ()
+    where_room = "AND room = ?" if room else ""
+
+    rows = _run(db.query(
+        f"SELECT room, priority, COUNT(*) AS n FROM todos "
+        f"WHERE status IN ('open','in_progress','blocked') {where_room} "
+        f"GROUP BY room, priority ORDER BY room, priority",
+        params_room,
+    ))
+
+    priorities = [1, 2, 3, 4, 5]
+    rooms_seen: list[str] = []
+    matrix: dict[str, dict[int, int]] = {}
+    for r in rows:
+        if r["room"] not in rooms_seen:
+            rooms_seen.append(r["room"])
+            matrix[r["room"]] = {p: 0 for p in priorities}
+        matrix[r["room"]][r["priority"]] = r["n"]
+
+    max_val = max((r["n"] for r in rows), default=1)
+    col_totals = {p: sum(matrix[rm].get(p, 0) for rm in rooms_seen) for p in priorities}
+    row_totals = {rm: sum(matrix[rm].values()) for rm in rooms_seen}
+    grand_total = sum(row_totals.values())
+    return {
+        "rooms": rooms_seen,
+        "priorities": priorities,
+        "matrix": matrix,
+        "max_val": max_val,
+        "col_totals": col_totals,
+        "row_totals": row_totals,
+        "grand_total": grand_total,
+    }
 
 
 def get_entries_by_tag(tag: str, status: str = "active", limit: int = 50, offset: int = 0) -> dict:

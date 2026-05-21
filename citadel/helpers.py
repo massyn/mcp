@@ -19,9 +19,14 @@ def _slugify(name: str) -> str:
 
 async def _resolve_room(name: str) -> str | None:
     """Return the canonical room name for a given name or alias, or None if not found."""
-    slug = _slugify(name)
-    row = await db.query_one(render("room_resolve_name.sql"), (slug,))
+    # Exact match first so mixed-case names that pre-date slugification are addressable.
+    row = await db.query_one(render("room_resolve_name.sql"), (name,))
     if row:
         return row["name"]
+    slug = _slugify(name)
+    if slug != name:
+        row = await db.query_one(render("room_resolve_name.sql"), (slug,))
+        if row:
+            return row["name"]
     row = await db.query_one(render("room_resolve_alias.sql"), (f'%"{slug}"%',))
     return row["name"] if row else None

@@ -6,50 +6,127 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
 <script>
 (function () {
-    var weeks = {{ velocity.weeks | tojson }};
-    var rooms = {{ velocity.rooms | tojson }};
-    var counts = {{ velocity.counts | tojson }};
-
     var palette = [
         '#4e79a7','#f28e2b','#e15759','#76b7b2','#59a14f',
         '#edc948','#b07aa1','#ff9da7','#9c755f','#bab0ac'
     ];
 
-    var datasets = rooms.map(function (room, i) {
-        return {
-            label: room,
-            data: weeks.map(function (w) { return counts[room][w] || 0; }),
-            backgroundColor: palette[i % palette.length],
-        };
-    });
+    var weeks    = {{ velocity.weeks | tojson }};
+    var velRooms = {{ velocity.rooms | tojson }};
+    var counts   = {{ velocity.counts | tojson }};
 
-    var ctx = document.getElementById('velocity-chart').getContext('2d');
-    new Chart(ctx, {
-        type: 'bar',
-        data: { labels: weeks, datasets: datasets },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { position: 'right' },
-                title: { display: false },
+    if (document.getElementById('velocity-chart')) {
+        new Chart(document.getElementById('velocity-chart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: weeks,
+                datasets: velRooms.map(function (room, i) {
+                    return {
+                        label: room,
+                        data: weeks.map(function (w) { return counts[room][w] || 0; }),
+                        backgroundColor: palette[i % palette.length],
+                    };
+                }),
             },
-            scales: {
-                x: { stacked: true, title: { display: true, text: 'Week' } },
-                y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'Todos completed' } },
+            options: {
+                responsive: true,
+                plugins: { legend: { position: 'right' } },
+                scales: {
+                    x: { stacked: true, title: { display: true, text: 'Week' } },
+                    y: { stacked: true, beginAtZero: true, ticks: { stepSize: 1 }, title: { display: true, text: 'Completed' } },
+                },
             },
-        },
-    });
+        });
+    }
 }());
 </script>
 {% endblock %}
 
 {% block content %}
-<h5 class="mb-3">Velocity</h5>
-{% if velocity.weeks %}
-<div style="max-height:480px">
-    <canvas id="velocity-chart"></canvas>
+{# ── Room filter ─────────────────────────────────────────────────────── #}
+<form method="get" action="/velocity" class="mb-4">
+    <div class="card bg-light border">
+        <div class="card-body py-2 px-3">
+            <div class="d-flex align-items-center gap-3">
+                <span class="small fw-semibold text-muted text-nowrap">Room</span>
+                <select name="room" class="form-select form-select-sm" style="min-width:10rem" onchange="this.form.submit()">
+                    <option value="">All rooms</option>
+                    {% for r in rooms %}
+                    <option value="{{ r.name }}" {% if selected_room == r.name %}selected{% endif %}>{{ r.name }}</option>
+                    {% endfor %}
+                </select>
+                {% if selected_room %}
+                <a href="/velocity" class="btn btn-sm btn-outline-secondary">Clear</a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</form>
+
+{% set p_labels = {1: 'P1 Critical', 2: 'P2 High', 3: 'P3 Medium', 4: 'P4 Low', 5: 'P5 Nice-to-have'} %}
+{% set p_colours = {1: '220,53,69', 2: '255,193,7', 3: '108,117,125', 4: '25,135,84', 5: '173,181,189'} %}
+
+<div class="row g-4 align-items-start">
+
+    {# ── Velocity chart ────────────────────────────────────────────────── #}
+    <div class="col-lg-6">
+        <h5 class="mb-2">Completed over time{% if selected_room %} — {{ selected_room }}{% endif %}</h5>
+        {% if velocity.weeks %}
+        <div style="position:relative; height:320px">
+            <canvas id="velocity-chart"></canvas>
+        </div>
+        {% else %}
+        <p class="text-muted">No completed todos with a <code>completed_on</code> timestamp yet.</p>
+        {% endif %}
+    </div>
+
+    {# ── Open heatmap ──────────────────────────────────────────────────── #}
+    <div class="col-lg-6">
+        <h5 class="mb-2">Open by room &amp; priority{% if selected_room %} — {{ selected_room }}{% endif %}</h5>
+        {% if heatmap.rooms %}
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle mb-0" style="width:auto">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-muted fw-normal small" style="min-width:10rem">Room</th>
+                        {% for p in heatmap.priorities %}
+                        <th class="text-center small" style="min-width:5.5rem">{{ p_labels.get(p, 'P' ~ p) }}</th>
+                        {% endfor %}
+                        <th class="text-center small" style="min-width:4rem">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for room in heatmap.rooms %}
+                    <tr>
+                        <td class="fw-semibold small">{{ room }}</td>
+                        {% for p in heatmap.priorities %}
+                        {% set n = heatmap.matrix[room][p] %}
+                        {% set alpha = (n / heatmap.max_val * 0.75) if heatmap.max_val > 0 else 0 %}
+                        <td class="text-center small"
+                            style="background-color: rgba({{ p_colours.get(p, '108,117,125') }}, {{ '%.2f' % alpha }});">
+                            {% if n %}{{ n }}{% else %}<span class="text-muted">—</span>{% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-center small fw-semibold">{{ heatmap.row_totals[room] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light">
+                    <tr>
+                        <td class="small text-muted">Total</td>
+                        {% for p in heatmap.priorities %}
+                        {% set ct = heatmap.col_totals[p] %}
+                        <td class="text-center small fw-semibold">{{ ct if ct else '—' }}</td>
+                        {% endfor %}
+                        <td class="text-center small fw-semibold">{{ heatmap.grand_total }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted">No open todos{% if selected_room %} in {{ selected_room }}{% endif %}.</p>
+        {% endif %}
+    </div>
+
 </div>
-{% else %}
-<p class="text-muted">No completed todos with a <code>completed_on</code> timestamp yet.</p>
-{% endif %}
 {% endblock %}

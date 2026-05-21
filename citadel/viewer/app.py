@@ -130,8 +130,13 @@ def todos_view():
 
 @app.route("/velocity")
 def velocity_view():
-    velocity = data.get_velocity_data()
-    return render_template("velocity.html", **_index_ctx(velocity=velocity))
+    room = request.args.get("room") or None
+    velocity = data.get_velocity_data(room=room)
+    heatmap = data.get_open_heatmap(room=room)
+    return render_template(
+        "velocity.html",
+        **_index_ctx(velocity=velocity, heatmap=heatmap, selected_room=room),
+    )
 
 
 @app.route("/search")
