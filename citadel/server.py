@@ -43,6 +43,26 @@ Citadel is a personal knowledge management system. It has two main constructs:
 - **Entries**: durable knowledge — decisions, patterns, research, reference material. These persist indefinitely and absorb the outcome of completed work.
 - **Todos**: work items — actionable, completable tasks. When done, mark them done and record the outcome in the linked entry.
 
+## On starting a conversation
+
+Call `citadel_get_manifest` at the start of every conversation to orient on what knowledge exists.
+Do not wait to be asked — this should be automatic.
+
+## Proactive use
+
+Do not wait to be asked to log things. If a decision is made, a pattern emerges, or new context
+surfaces that should persist beyond this conversation, write it to Citadel. Entries capture WHY
+(decisions, rationale, outcomes). Todos capture WHAT (actionable work items).
+
+When completing a todo, link it to a relevant entry via `entry_id` where one exists.
+
+## Todo lifecycle
+
+When you begin work on a todo, call `citadel_update_todo` with `status='in_progress'` before
+starting. When the work is complete, call `citadel_update_todo` with `status='done'` before
+ending the response. Do not wait for the user to ask. If an outcome is worth recording, update
+or create the linked entry before closing the todo.
+
 ## Writing CC-ready todos
 
 Before saving a todo, ask yourself: is this something Claude Code is likely to pick up and action later?
