@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from dotenv import load_dotenv
-from flask import Flask, abort, render_template, request
+from flask import Flask, abort, redirect, render_template, request, url_for
 
 _here = Path(__file__).parent
 
@@ -116,16 +116,44 @@ def todos_view():
     for t in todos:
         room_counts[t["room"]] = room_counts.get(t["room"], 0) + 1
     todo_rooms = sorted(room_counts.items())
+    manifest = data.get_manifest()
+    all_rooms = [r["name"] for r in manifest.get("rooms", [])]
     ctx = dict(
         todos=todos,
         todo_rooms=todo_rooms,
         selected_room=room,
         status_filter=status_filter,
         priority_max=priority_max,
+        all_rooms=all_rooms,
     )
     if request.headers.get("HX-Request"):
         return render_template("_todos_content.html", **ctx)
     return render_template("todos.html", **ctx)
+
+
+@app.route("/todos/add", methods=["POST"])
+def todo_add():
+    room = request.form.get("room", "").strip()
+    title = request.form.get("title", "").strip()
+    detail = request.form.get("detail", "").strip() or None
+    priority = int(request.form.get("priority", 3))
+    due_date = request.form.get("due_date", "").strip() or None
+    data.add_todo(room=room, title=title, detail=detail, priority=priority, due_date=due_date)
+    return redirect(url_for("todos_view"))
+
+
+@app.route("/todos/<int:todo_id>/update", methods=["POST"])
+def todo_update(todo_id: int):
+    title = request.form.get("title", "").strip()
+    detail = request.form.get("detail", "").strip() or None
+    priority = int(request.form.get("priority", 3))
+    due_date = request.form.get("due_date", "").strip() or None
+    status = request.form.get("status", "").strip() or None
+    data.update_todo(
+        todo_id=todo_id, title=title, detail=detail,
+        priority=priority, due_date=due_date, status=status,
+    )
+    return redirect(url_for("todos_view"))
 
 
 @app.route("/velocity")

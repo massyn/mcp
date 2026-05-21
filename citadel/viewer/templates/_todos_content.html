@@ -8,7 +8,7 @@
       hx-target="#main-content"
       hx-trigger="change">
 
-    <div class="card bg-light border mb-3">
+    <div class="card bg-light border mb-2">
         <div class="card-body py-2 px-3">
             <div class="d-flex flex-wrap gap-4 align-items-center">
 
@@ -53,6 +53,10 @@
         </div>
     </div>
 </form>
+
+<div class="d-flex justify-content-end mb-2">
+    <button type="button" class="btn btn-sm btn-primary" id="btn-add-todo">+ Add todo</button>
+</div>
 
 {# ── Table ──────────────────────────────────────────────────────────── #}
 {% if todos %}
@@ -106,7 +110,7 @@
 <p class="text-muted mt-2">No todos match the current filters.</p>
 {% endif %}
 
-{# ── Modal ──────────────────────────────────────────────────────────── #}
+{# ── Add / Edit modal ──────────────────────────────────────────────── #}
 <div class="modal fade" id="todoModal" tabindex="-1" aria-labelledby="todoModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
@@ -114,19 +118,64 @@
                 <h5 class="modal-title" id="todoModalLabel"></h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <div class="d-flex flex-wrap gap-2 mb-3" id="modal-badges"></div>
-                <div id="modal-detail" class="border rounded p-3 bg-light font-monospace small" style="white-space:pre-wrap; display:none"></div>
-                <p id="modal-no-detail" class="text-muted fst-italic" style="display:none">No detail provided.</p>
-            </div>
-            <div class="modal-footer justify-content-between">
-                <small class="text-muted" id="modal-meta"></small>
-                <a id="modal-room-link" href="#"
-                   hx-target="#main-content"
-                   hx-push-url="true"
-                   class="btn btn-sm btn-outline-secondary"
-                   data-bs-dismiss="modal">Go to room</a>
-            </div>
+            <form id="todo-form" method="POST" action="">
+                <div class="modal-body">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <label class="form-label fw-semibold" for="form-room">Room</label>
+                            <input type="text" class="form-control" name="room" id="form-room"
+                                   list="room-datalist" required autocomplete="off">
+                            <datalist id="room-datalist">
+                                {% for room_name in all_rooms %}
+                                <option value="{{ room_name }}">
+                                {% endfor %}
+                            </datalist>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="form-priority">Priority</label>
+                            <select class="form-select" name="priority" id="form-priority">
+                                <option value="1">P1 Critical</option>
+                                <option value="2">P2 High</option>
+                                <option value="3">P3 Medium</option>
+                                <option value="4">P4 Low</option>
+                                <option value="5">P5 Nice-to-have</option>
+                            </select>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold" for="form-title">Title</label>
+                            <input type="text" class="form-control" name="title" id="form-title" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label fw-semibold" for="form-detail">
+                                Detail <small class="text-muted fw-normal">(optional, Markdown)</small>
+                            </label>
+                            <textarea class="form-control font-monospace" name="detail" id="form-detail"
+                                      rows="6" placeholder="Optional detail…"></textarea>
+                        </div>
+                        <div class="col-md-6" id="field-status" style="display:none">
+                            <label class="form-label fw-semibold" for="form-status">Status</label>
+                            <select class="form-select" name="status" id="form-status">
+                                <option value="open">Open</option>
+                                <option value="in_progress">In progress</option>
+                                <option value="blocked">Blocked</option>
+                                <option value="deferred">Deferred</option>
+                                <option value="done">Done</option>
+                                <option value="cancelled">Cancelled</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="form-due-date">
+                                Due date <small class="text-muted fw-normal">(optional)</small>
+                            </label>
+                            <input type="date" class="form-control" name="due_date" id="form-due-date">
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
@@ -167,40 +216,48 @@
         });
     }
 
-    // ── Modal ────────────────────────────────────────────────────────
+    // ── Add / Edit modal ─────────────────────────────────────────────
+    var form = document.getElementById('todo-form');
+
+    function getModal() {
+        return bootstrap.Modal.getOrCreateInstance(document.getElementById('todoModal'));
+    }
+
+    function openAdd() {
+        document.getElementById('todoModalLabel').textContent = 'Add todo';
+        form.action = '/todos/add';
+        document.getElementById('form-room').value     = '';
+        document.getElementById('form-room').readOnly  = false;
+        document.getElementById('form-room').classList.remove('bg-light');
+        document.getElementById('form-title').value    = '';
+        document.getElementById('form-detail').value   = '';
+        document.getElementById('form-priority').value = '3';
+        document.getElementById('form-due-date').value = '';
+        document.getElementById('field-status').style.display = 'none';
+        getModal().show();
+    }
+
+    function openEdit(d) {
+        document.getElementById('todoModalLabel').textContent = '#' + d.id + ' — ' + d.title;
+        form.action = '/todos/' + d.id + '/update';
+        document.getElementById('form-room').value     = d.room;
+        document.getElementById('form-room').readOnly  = true;
+        document.getElementById('form-room').classList.add('bg-light');
+        document.getElementById('form-title').value    = d.title;
+        document.getElementById('form-detail').value   = d.detail || '';
+        document.getElementById('form-priority').value = d.priority;
+        document.getElementById('form-status').value   = d.status;
+        document.getElementById('form-due-date').value = d.due || '';
+        document.getElementById('field-status').style.display = '';
+        getModal().show();
+    }
+
+    document.getElementById('btn-add-todo').addEventListener('click', openAdd);
+
     document.querySelectorAll('.todo-row').forEach(function (row) {
         row.addEventListener('click', function (e) {
-            if (e.target.closest('a')) return; // let room links navigate normally
-
-            var d = row.dataset;
-            document.getElementById('todoModalLabel').textContent = '#' + d.id + ' — ' + d.title;
-
-            var badges = document.getElementById('modal-badges');
-            badges.innerHTML =
-                '<span class="badge bg-' + d.priorityColour + '">P' + d.priority + ' ' + d.priorityLabel + '</span>' +
-                '<span class="badge bg-' + d.statusColour + '">' + d.status + '</span>' +
-                '<span class="badge bg-light text-dark border">' + d.room + '</span>' +
-                (d.due ? '<span class="badge bg-light text-dark border">Due ' + d.due + '</span>' : '');
-
-            var detailEl = document.getElementById('modal-detail');
-            var noDetailEl = document.getElementById('modal-no-detail');
-            if (d.detail) {
-                detailEl.textContent = d.detail;
-                detailEl.style.display = '';
-                noDetailEl.style.display = 'none';
-            } else {
-                detailEl.style.display = 'none';
-                noDetailEl.style.display = '';
-            }
-
-            document.getElementById('modal-meta').textContent = 'Updated ' + d.updated;
-
-            var roomLink = document.getElementById('modal-room-link');
-            roomLink.href = '/room/' + d.room;
-            roomLink.setAttribute('hx-get', '/room/' + d.room);
-            htmx.process(roomLink);
-
-            new bootstrap.Modal(document.getElementById('todoModal')).show();
+            if (e.target.closest('a')) return;
+            openEdit(row.dataset);
         });
     });
 }());

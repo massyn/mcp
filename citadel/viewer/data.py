@@ -13,7 +13,7 @@ from entries import citadel_get_entry, citadel_get_room  # noqa: E402
 from rooms import citadel_get_manifest  # noqa: E402
 from search import citadel_search  # noqa: E402
 from server import db  # noqa: E402
-from todos import citadel_get_todos  # noqa: E402
+from todos import citadel_add_todo, citadel_get_todos, citadel_update_todo  # noqa: E402
 
 # Single persistent event loop running in a daemon thread.
 # asyncio.run() opens and closes a loop on every call, which breaks the
@@ -54,6 +54,32 @@ def get_todos(
 ) -> dict:
     return json.loads(_run(citadel_get_todos(
         room=room, status=status, priority_max=priority_max, limit=limit
+    )))
+
+
+def add_todo(
+    room: str,
+    title: str,
+    detail: Optional[str] = None,
+    priority: int = 3,
+    due_date: Optional[str] = None,
+) -> dict:
+    return json.loads(_run(citadel_add_todo(
+        room=room, title=title, detail=detail, priority=priority, due_date=due_date
+    )))
+
+
+def update_todo(
+    todo_id: int,
+    title: Optional[str] = None,
+    detail: Optional[str] = None,
+    priority: Optional[int] = None,
+    due_date: Optional[str] = None,
+    status: Optional[str] = None,
+) -> dict:
+    return json.loads(_run(citadel_update_todo(
+        todo_id=todo_id, title=title, detail=detail,
+        priority=priority, due_date=due_date, status=status,
     )))
 
 
