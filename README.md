@@ -4,6 +4,7 @@ A collection of MCP services I am working on
 * [Citadel](./citadel/README.md) - a knowledge management system
 * [Publish S3](./publishs3/README.md) - publish HTML, markdown, and PDF to an S3 static website
 * [Route53](./route53/README.md) - check domain availability via AWS Route53
+* [UptimeRobot](./uptimerobot/README.md) - list, search, and edit UptimeRobot monitors
 
 ## Installation
 
@@ -13,6 +14,7 @@ Use `install.py` at the root to register any MCP server with Claude Desktop:
 python install.py citadel
 python install.py publishs3
 python install.py route53
+python install.py uptimerobot
 ```
 
 The script uses the interpreter that runs it (`sys.executable`), so the registered server always uses the same Python environment. Restart Claude Desktop after running.

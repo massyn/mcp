@@ -7,12 +7,16 @@ using the AWS Route53 Domains API.
 """
 
 import asyncio
-import json
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
 from mcp.server import Server
+
+load_dotenv(Path(__file__).parent / ".env")
 from mcp.server.stdio import stdio_server
 from mcp.types import Tool, TextContent
-from lookup_route53 import does_domain_exist
+from lookup_route53 import does_domain_exist, list_registered_domains
 
 # Create server instance
 server = Server("route53-domain-checker")
@@ -48,6 +52,32 @@ async def list_tools() -> list[Tool]:
                     }
                 },
                 "required": ["domains"]
+            }
+        ),
+        Tool(
+            name="list_registered_domains",
+            description=(
+                "List all domains registered in the AWS account via Route53. "
+                "Returns each domain's name, expiry date, auto-renew status, and transfer-lock status. "
+                "Requires AWS credentials to be configured."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "profile": {
+                        "type": "string",
+                        "description": "AWS profile name to use (optional, defaults to default profile)"
+                    },
+                    "filter": {
+                        "type": "string",
+                        "description": (
+                            "Case-insensitive substring to match against domain names. "
+                            "Use '.com' for all .com domains, 'acme' for domains containing 'acme', etc. "
+                            "Omit to return every registered domain."
+                        )
+                    }
+                },
+                "required": []
             }
         )
     ]
@@ -117,6 +147,56 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
                 type="text",
                 text=f"Error checking domain availability: {str(e)}"
             )]
+
+    elif name == "list_registered_domains":
+        profile = arguments.get("profile") or os.environ.get("AWS_PROFILE")
+        filter_str = arguments.get("filter")
+
+        try:
+            result = list_registered_domains(profile=profile, filter_str=filter_str)
+
+            if not result['success']:
+                return [TextContent(type="text", text=f"Error listing domains: {result['error']}")]
+
+            domains = result['domains']
+            if not domains:
+                msg = (
+                    f"No registered domains matching '{filter_str}' found in this AWS account."
+                    if filter_str else
+                    "No registered domains found in this AWS account."
+                )
+                return [TextContent(type="text", text=msg)]
+
+            header = f"Registered Domains — {len(domains)} result(s)"
+            if filter_str:
+                header += f" (filter: '{filter_str}')"
+            lines = [header, ""]
+            for d in domains:
+                lines.append(f"Domain:       {d['domain']}")
+                lines.append(f"Expiry:       {d.get('expiry') or 'unknown'}")
+                lines.append(f"Created:      {d.get('created') or 'unknown'}")
+                lines.append(f"Updated:      {d.get('updated') or 'unknown'}")
+                lines.append(f"Auto-renew:   {'yes' if d.get('auto_renew') else 'no'}")
+                lines.append(f"Transfer lock:{'yes' if d.get('transfer_lock') else 'no'}")
+                lines.append(f"DNSSEC:       {'enabled' if d.get('dnssec_enabled') else 'disabled'}")
+                if d.get('registrar'):
+                    lines.append(f"Registrar:    {d['registrar']}")
+                if d.get('registrar_url'):
+                    lines.append(f"Registrar URL:{d['registrar_url']}")
+                if d.get('status'):
+                    lines.append(f"Status:       {', '.join(d['status'])}")
+                if d.get('name_servers'):
+                    lines.append("Name servers:")
+                    for ns in d['name_servers']:
+                        lines.append(f"  - {ns}")
+                if d.get('error'):
+                    lines.append(f"  (detail fetch failed: {d['error']})")
+                lines.append("")
+
+            return [TextContent(type="text", text="\n".join(lines).rstrip())]
+
+        except Exception as e:
+            return [TextContent(type="text", text=f"Error listing registered domains: {str(e)}")]
 
     else:
         return [TextContent(

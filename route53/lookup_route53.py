@@ -73,6 +73,84 @@ def does_domain_exist(domains, profile=None):
     return result
 
 
+def list_registered_domains(profile: str | None = None, filter_str: str | None = None) -> dict:
+    """
+    List all domains registered in the AWS account via Route53 Domains API,
+    enriched with per-domain detail (nameservers, dates, status, DNSSEC, registrar).
+
+    Args:
+        profile:    AWS profile name to use (optional, defaults to default profile)
+        filter_str: Case-insensitive substring to match against domain names (e.g. '.com', 'acme').
+                    Omit to return all domains.
+
+    Returns:
+        Dict with 'success' bool and either 'domains' list or 'error' string.
+    """
+    try:
+        if profile:
+            session = boto3.Session(profile_name=profile)
+            client = session.client('route53domains', region_name='us-east-1')
+        else:
+            client = boto3.client('route53domains', region_name='us-east-1')
+
+        # Collect summary rows (includes TransferLock, AutoRenew, Expiry)
+        summary: dict[str, dict] = {}
+        paginator = client.get_paginator('list_domains')
+        for page in paginator.paginate():
+            for entry in page.get('Domains', []):
+                name = entry['DomainName']
+                expiry = entry.get('Expiry')
+                summary[name] = {
+                    'auto_renew': entry.get('AutoRenew'),
+                    'transfer_lock': entry.get('TransferLock'),
+                    'expiry': expiry.isoformat() if expiry else None,
+                }
+
+        # Apply optional filter before fetching per-domain detail
+        needle = filter_str.lower() if filter_str else None
+        if needle:
+            summary = {k: v for k, v in summary.items() if needle in k.lower()}
+
+        # Enrich each domain with detail from get_domain_detail
+        domains = []
+        for name, base in summary.items():
+            try:
+                d = client.get_domain_detail(DomainName=name)
+                created = d.get('CreatedDate')
+                updated = d.get('UpdatedDate')
+                expiry = d.get('ExpirationDate')
+                domains.append({
+                    'domain': name,
+                    'expiry': expiry.isoformat() if expiry else base['expiry'],
+                    'created': created.isoformat() if created else None,
+                    'updated': updated.isoformat() if updated else None,
+                    'auto_renew': base['auto_renew'],
+                    'transfer_lock': base['transfer_lock'],
+                    'name_servers': [ns['Name'] for ns in d.get('Nameservers', [])],
+                    'status': d.get('StatusList', []),
+                    'dnssec_enabled': bool(d.get('DnssecKeys')),
+                    'registrar': d.get('RegistrarName'),
+                    'registrar_url': d.get('RegistrarUrl'),
+                })
+            except ClientError as e:
+                domains.append({
+                    'domain': name,
+                    'expiry': base['expiry'],
+                    'auto_renew': base['auto_renew'],
+                    'transfer_lock': base['transfer_lock'],
+                    'error': f"{e.response['Error']['Code']} - {e.response['Error']['Message']}",
+                })
+
+        return {'success': True, 'domains': domains}
+
+    except NoCredentialsError:
+        return {'success': False, 'error': 'AWS credentials not configured'}
+    except ClientError as e:
+        return {'success': False, 'error': f"{e.response['Error']['Code']} - {e.response['Error']['Message']}"}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+
 if __name__ == '__main__':
     # Example 1: Using default AWS profile
     print("Checking domains with default profile:")
