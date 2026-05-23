@@ -1,0 +1,6 @@
+fastmcp
+python-frontmatter
+pyyaml
+jinja2
+libsql-client
+python-dotenv
