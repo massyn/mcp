@@ -1,6 +1,0 @@
-jinja2
-markdown
-mcp
-pydantic
-python-dotenv
-libsql-client

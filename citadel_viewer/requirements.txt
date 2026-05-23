@@ -1,5 +1,4 @@
 flask
 python-dotenv
 jinja2
-mcp
-pydantic
+python-frontmatter

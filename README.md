@@ -1,7 +1,7 @@
 # mcp
 A collection of MCP services I am working on
 
-* [Citadel](./citadel/README.md) - a knowledge management system
+* [Relay](./relay/README.md) - generic LLM-to-database bridge; SQL definition files become MCP tools (supersedes Citadel)
 * [Publish S3](./publishs3/README.md) - publish HTML, markdown, and PDF to an S3 static website
 * [Route53](./route53/README.md) - check domain availability via AWS Route53
 * [UptimeRobot](./uptimerobot/README.md) - list, search, and edit UptimeRobot monitors
@@ -11,7 +11,7 @@ A collection of MCP services I am working on
 Use `install.py` at the root to register any MCP server with Claude Desktop:
 
 ```bash
-python install.py citadel
+python install.py relay
 python install.py publishs3
 python install.py route53
 python install.py uptimerobot

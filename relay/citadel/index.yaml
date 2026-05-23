@@ -7,3 +7,6 @@ system_prompt: |
   tags, and status.
   Always read before writing. Prefer archiving over deleting.
   Entries capture the WHY behind decisions, not open work.
+  Before asking a question about any project, tool, or technical decision, check the
+  Citadel first. If the answer is there, use it. Only ask if the Citadel genuinely
+  doesn't have it.
