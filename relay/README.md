@@ -207,6 +207,65 @@ Configure an MCP client to connect to it:
 
 If no `RELAY_TOKEN` / `--token` is set, the server starts without authentication (a warning is logged). This is only appropriate for trusted local networks.
 
+### Exposing via nginx (with Cloudflare or public HTTPS)
+
+When relay runs behind nginx, add a location block that proxies a public path to the local `/mcp` endpoint. `proxy_buffering off` is required for the streaming MCP transport.
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.example.com;
+
+    location /citadel {
+        proxy_pass http://localhost:8788/mcp;
+        proxy_http_version 1.1;
+        proxy_set_header Host localhost;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header Connection "";
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 86400s;
+    }
+}
+```
+
+If Cloudflare (or another CDN) handles TLS termination, the nginx block only needs to listen on port 80 — HTTPS is handled upstream.
+
+### Connecting Claude Desktop via mcp-proxy
+
+Claude Desktop does not natively support remote MCP servers. Use [mcp-proxy](https://github.com/sparfenyuk/mcp-proxy) as a local bridge:
+
+```bash
+pip install mcp-proxy
+```
+
+Add an entry to `claude_desktop_config.json` using `--transport streamablehttp` (not `sse` — relay serves streamable HTTP, not SSE):
+
+```json
+{
+  "mcpServers": {
+    "citadel": {
+      "command": "mcp-proxy",
+      "args": [
+        "https://your-domain.example.com/citadel",
+        "--transport",
+        "streamablehttp",
+        "-H",
+        "Authorization",
+        "Bearer your-secret-token"
+      ],
+      "autoApprove": []
+    }
+  }
+}
+```
+
+Config file locations:
+- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
+- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
+Restart Claude Desktop after editing.
+
 ### Debug mode (development)
 
 Run a single tool, print the rendered SQL, and show the result:

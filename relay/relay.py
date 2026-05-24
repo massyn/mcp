@@ -86,9 +86,20 @@ def _make_bearer_middleware(app, token: str):
     return middleware
 
 
+def _make_host_rewrite_middleware(app):
+    async def middleware(scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            headers = [(k, v) for k, v in scope.get("headers", []) if k != b"host"]
+            headers.append((b"host", b"localhost"))
+            scope = {**scope, "headers": headers}
+        await app(scope, receive, send)
+    return middleware
+
+
 def _run_http(mcp: FastMCP, host: str, port: int, token: str | None) -> None:
     import uvicorn
     app = mcp.streamable_http_app()
+    app = _make_host_rewrite_middleware(app)
     if token:
         app = _make_bearer_middleware(app, token)
     uvicorn.run(app, host=host, port=port)
