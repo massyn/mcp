@@ -13,6 +13,7 @@ from typing import Any, Optional
 import yaml
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 
 from engine import Engine, build_db, load_sql_files, make_jinja_env, render_steps
 
@@ -86,20 +87,9 @@ def _make_bearer_middleware(app, token: str):
     return middleware
 
 
-def _make_host_rewrite_middleware(app):
-    async def middleware(scope, receive, send):
-        if scope["type"] in ("http", "websocket"):
-            headers = [(k, v) for k, v in scope.get("headers", []) if k != b"host"]
-            headers.append((b"host", b"localhost"))
-            scope = {**scope, "headers": headers}
-        await app(scope, receive, send)
-    return middleware
-
-
 def _run_http(mcp: FastMCP, host: str, port: int, token: str | None) -> None:
     import uvicorn
     app = mcp.streamable_http_app()
-    app = _make_host_rewrite_middleware(app)
     if token:
         app = _make_bearer_middleware(app, token)
     uvicorn.run(app, host=host, port=port)
@@ -243,7 +233,12 @@ def main() -> None:
         await engine.run_startup()
         yield
 
-    mcp = FastMCP(server_name, instructions=system_prompt, lifespan=_lifespan)
+    transport_security = (
+        TransportSecuritySettings(enable_dns_rebinding_protection=False)
+        if cfg["transport"] == "http"
+        else None
+    )
+    mcp = FastMCP(server_name, instructions=system_prompt, lifespan=_lifespan, transport_security=transport_security)
 
     for d in tool_defs:
         name = d["meta"].get("name", d["path"].stem)
