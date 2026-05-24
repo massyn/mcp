@@ -88,21 +88,63 @@ String values are automatically escaped (single quotes doubled) before being inj
 
 ## Configuration
 
-All configuration is via environment variables. A `.env` file inside the code directory is loaded automatically.
+All configuration is via environment variables. A `.env` file in the working directory (next to `relay.py`) is loaded automatically, so a single file can drive the entire startup.
 
 | Variable | CLI override | Description |
 |---|---|---|
 | `RELAY_CODE` | `--code` | Path to the code directory (required) |
+| `RELAY_TRANSPORT` | `--transport` | `stdio` (default) or `http` |
+| `RELAY_HOST` | `--host` | Bind address for HTTP transport (default: `0.0.0.0`) |
+| `RELAY_PORT` | `--port` | Port for HTTP transport (default: `8788`) |
+| `RELAY_TOKEN` | `--token` | Bearer token for HTTP transport (no auth if unset) |
 | `DB_TYPE` | — | `sqlite` or `turso`; auto-detected from `TURSO_URL` if not set |
 | `DB_PATH` | — | SQLite path (default: `~/.relay/relay.db`) |
 | `TURSO_URL` | — | Turso database URL (`libsql://...`); presence implies `DB_TYPE=turso` |
 | `TURSO_TOKEN` | — | Turso auth token |
 
-`RELAY_CODE` is typically set in the MCP client config, not in the code directory's `.env` (that would be circular). All other variables can live in the `.env`.
+**Load order:** `.env` in the working directory is loaded first. If the code directory has its own `.env` (e.g. for DB credentials), it is loaded second and fills in any variables not already set.
+
+CLI arguments override environment variables.
 
 ## Usage
 
-### As an MCP server (production)
+### Starting with a .env file (simplest)
+
+Put a `.env` file next to `relay.py` and run:
+
+```bash
+python relay.py
+```
+
+**stdio example** (default, for local MCP clients):
+
+```ini
+# .env
+RELAY_CODE=./citadel
+DB_PATH=./citadel/citadel.db
+```
+
+**HTTP example** (for remote MCP clients):
+
+```ini
+# .env
+RELAY_CODE=./citadel
+DB_PATH=./citadel/citadel.db
+RELAY_TRANSPORT=http
+RELAY_PORT=8788
+RELAY_TOKEN=your-secret-token
+```
+
+Then start:
+
+```bash
+python relay.py
+# 2026-05-24 12:00:00 [INFO] Registered tool: add_entry
+# 2026-05-24 12:00:00 [INFO] Starting HTTP server on 0.0.0.0:8788
+# 2026-05-24 12:00:00 [INFO] Bearer token authentication enabled
+```
+
+### As an MCP server via stdio (local clients)
 
 SQLite:
 
@@ -139,6 +181,32 @@ Turso:
 }
 ```
 
+### As a remote HTTP server
+
+Start relay with HTTP transport (via `.env` or CLI):
+
+```bash
+python relay.py --transport http --port 8788 --token your-secret-token
+```
+
+Configure an MCP client to connect to it:
+
+```json
+{
+  "mcpServers": {
+    "citadel": {
+      "type": "http",
+      "url": "http://your-server:8788/mcp",
+      "headers": {
+        "Authorization": "Bearer your-secret-token"
+      }
+    }
+  }
+}
+```
+
+If no `RELAY_TOKEN` / `--token` is set, the server starts without authentication (a warning is logged). This is only appropriate for trusted local networks.
+
 ### Debug mode (development)
 
 Run a single tool, print the rendered SQL, and show the result:
@@ -159,3 +227,5 @@ pip install -r requirements.txt
 ```
 
 Turso support requires `libsql-client`, which is listed in `requirements.txt` but only imported at runtime when `TURSO_URL` is set (or `DB_TYPE=turso` is explicit).
+
+HTTP transport requires `uvicorn`, also in `requirements.txt`.
