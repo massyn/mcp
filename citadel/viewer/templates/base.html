@@ -32,6 +32,7 @@
     </style>
 </head>
 <body>
+    {% set _nav_room = (active_room if active_room is defined and active_room) or (selected_room if selected_room is defined and selected_room) or none %}
     <nav class="navbar navbar-dark bg-dark sticky-top">
         <div class="container-fluid gap-2">
             <a class="navbar-brand me-2 flex-shrink-0" href="/">Citadel</a>
@@ -45,9 +46,9 @@
                        hx-trigger="input changed delay:400ms, search"
                        autocomplete="off">
             </div>
-            <a class="btn btn-outline-light btn-sm flex-shrink-0" href="/">Entries</a>
-            <a class="btn btn-outline-light btn-sm flex-shrink-0" href="/todos">Todos</a>
-            <a class="btn btn-outline-light btn-sm flex-shrink-0" href="/velocity">Velocity</a>
+            <a class="btn btn-outline-light btn-sm flex-shrink-0" href="{% if _nav_room %}/room/{{ _nav_room }}{% else %}/{% endif %}">Entries</a>
+            <a class="btn btn-outline-light btn-sm flex-shrink-0" href="/todos{% if _nav_room %}?room={{ _nav_room }}{% endif %}">Todos</a>
+            <a class="btn btn-outline-light btn-sm flex-shrink-0" href="/velocity{% if _nav_room %}?room={{ _nav_room }}{% endif %}">Velocity</a>
         </div>
     </nav>
 

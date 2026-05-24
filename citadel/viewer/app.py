@@ -11,9 +11,7 @@ from flask import Flask, abort, redirect, render_template, request, url_for
 
 _here = Path(__file__).parent
 
-# Load parent .env first as base, then local .env overrides
-load_dotenv(_here.parent / ".env")
-load_dotenv(_here / ".env", override=True)
+load_dotenv(_here / ".env")
 
 # Strip ANSI escape codes from all output.
 # Werkzeug's startup banner is printed via click.secho() which writes directly
@@ -39,7 +37,7 @@ logging.basicConfig(
     datefmt="%H:%M:%S",
 )
 
-import data  # noqa: E402 — must follow sys.path setup in data.py
+import data
 
 app = Flask(__name__)
 
@@ -110,7 +108,8 @@ def todos_view():
     room = request.args.get("room") or None
     status_filter = request.args.getlist("status") or ["open", "in_progress", "blocked"]
     priority_max = request.args.get("priority_max", type=int)
-    result = data.get_todos(room=room, status=status_filter, priority_max=priority_max)
+    priority_min = request.args.get("priority_min", type=int)
+    result = data.get_todos(room=room, status=status_filter, priority_max=priority_max, priority_min=priority_min)
     todos = result.get("todos", [])
     room_counts: dict[str, int] = {}
     for t in todos:
@@ -124,6 +123,7 @@ def todos_view():
         selected_room=room,
         status_filter=status_filter,
         priority_max=priority_max,
+        priority_min=priority_min,
         all_rooms=all_rooms,
     )
     if request.headers.get("HX-Request"):
@@ -159,11 +159,14 @@ def todo_update(todo_id: int):
 @app.route("/velocity")
 def velocity_view():
     room = request.args.get("room") or None
-    velocity = data.get_velocity_data(room=room)
+    days = request.args.get("days", 14, type=int)
+    if days not in (14, 30, 90, 365):
+        days = 14
+    burnup = data.get_burnup_data(room=room, days=days)
     heatmap = data.get_open_heatmap(room=room)
     return render_template(
         "velocity.html",
-        **_index_ctx(velocity=velocity, heatmap=heatmap, selected_room=room),
+        **_index_ctx(burnup=burnup, heatmap=heatmap, selected_room=room, selected_days=days),
     )
 
 

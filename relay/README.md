@@ -231,6 +231,59 @@ server {
 
 If Cloudflare (or another CDN) handles TLS termination, the nginx block only needs to listen on port 80 — HTTPS is handled upstream.
 
+### Running as a systemd service
+
+Create a service file at `/etc/systemd/system/relay.service`. Adjust `User`, `WorkingDirectory`, and `ExecStart` to match your deployment:
+
+```ini
+[Unit]
+Description=Relay MCP server
+After=network.target
+
+[Service]
+Type=simple
+User=relay
+WorkingDirectory=/opt/relay
+EnvironmentFile=/opt/relay/.env
+ExecStart=/opt/relay/venv/bin/python relay.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Place your `.env` next to `relay.py` in `WorkingDirectory`. At minimum, set `RELAY_TRANSPORT=http` and `RELAY_PORT` so the process does not exit immediately (stdio mode exits as soon as stdin closes):
+
+```ini
+# /opt/relay/.env
+RELAY_CODE=/opt/relay/citadel
+DB_PATH=/opt/relay/citadel/citadel.db
+RELAY_TRANSPORT=http
+RELAY_PORT=8788
+RELAY_TOKEN=your-secret-token
+```
+
+Reload systemd, enable the service to start on boot, then start it:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable relay
+sudo systemctl start relay
+```
+
+Check that it is running:
+
+```bash
+sudo systemctl status relay
+```
+
+Tail the logs:
+
+```bash
+sudo journalctl -u relay -f
+```
+
 ### Connecting Claude Desktop via mcp-proxy
 
 Claude Desktop does not natively support remote MCP servers. Use [mcp-proxy](https://github.com/sparfenyuk/mcp-proxy) as a local bridge:

@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Velocity — Citadel{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+(function () {
+    var dates      = {{ burnup.dates | tojson }};
+    var openData   = {{ burnup.open  | tojson }};
+    var closedData = {{ burnup.closed | tojson }};
+
+    var el = document.getElementById('burnup-chart');
+    if (!el) return;
+
+    new Chart(el.getContext('2d'), {
+        type: 'line',
+        data: {
+            labels: dates,
+            datasets: [
+                {
+                    label: 'Open',
+                    data: openData,
+                    fill: true,
+                    backgroundColor: 'rgba(59,130,246,0.15)',
+                    borderColor:     'rgba(59,130,246,0.9)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius:      dates.length <= 31 ? 3 : 0,
+                    pointHoverRadius: 5,
+                },
+                {
+                    label: 'Closed',
+                    data: closedData,
+                    fill: false,
+                    borderColor:     'rgba(34,197,94,0.9)',
+                    borderWidth: 2,
+                    tension: 0.3,
+                    pointRadius:      dates.length <= 31 ? 3 : 0,
+                    pointHoverRadius: 5,
+                },
+            ]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: { position: 'top' },
+            },
+            scales: {
+                x: {
+                    ticks: { autoSkip: true, maxTicksLimit: 14 },
+                },
+                y: {
+                    beginAtZero: true,
+                    ticks: { stepSize: 1, precision: 0 },
+                    title: { display: true, text: 'Count' },
+                },
+            },
+        },
+    });
+}());
+</script>
+{% endblock %}
+
+{% block content %}
+
+{# ── Filters ──────────────────────────────────────────────────────────── #}
+<div class="card bg-light border mb-4">
+    <div class="card-body py-2 px-3">
+        <div class="d-flex flex-wrap align-items-center gap-3">
+
+            {# Room — submits a form so the hidden days value travels with it #}
+            <form method="get" action="/velocity" class="d-flex align-items-center gap-2 m-0">
+                <input type="hidden" name="days" value="{{ selected_days }}">
+                <span class="small fw-semibold text-muted text-nowrap">Room</span>
+                <select name="room" class="form-select form-select-sm" style="min-width:10rem"
+                        onchange="this.form.submit()">
+                    <option value="">All rooms</option>
+                    {% for r in rooms %}
+                    <option value="{{ r.name }}" {% if selected_room == r.name %}selected{% endif %}>{{ r.name }}</option>
+                    {% endfor %}
+                </select>
+                {% if selected_room %}
+                <a href="/velocity?days={{ selected_days }}" class="btn btn-sm btn-outline-secondary">Clear</a>
+                {% endif %}
+            </form>
+
+            {# Period — links so the room value travels with them #}
+            <span class="small fw-semibold text-muted text-nowrap">Period</span>
+            <div class="btn-group btn-group-sm" role="group">
+                {% for d, label in [(14,'14 days'),(30,'30 days'),(90,'Quarter'),(365,'Year')] %}
+                <a href="/velocity?{% if selected_room %}room={{ selected_room }}&{% endif %}days={{ d }}"
+                   class="btn btn-{{ 'primary' if selected_days == d else 'outline-secondary' }}">{{ label }}</a>
+                {% endfor %}
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<div class="row g-4 align-items-start">
+
+    {# ── Burnup chart ─────────────────────────────────────────────────── #}
+    <div class="col-lg-7">
+        <h5 class="mb-2">
+            Open vs Closed
+            {% if selected_room %}<span class="text-muted fw-normal">— {{ selected_room }}</span>{% endif %}
+        </h5>
+        <div style="position:relative; height:340px">
+            <canvas id="burnup-chart"></canvas>
+        </div>
+    </div>
+
+    {# ── Open heatmap ──────────────────────────────────────────────────── #}
+    <div class="col-lg-5">
+        {% set p_labels  = {1:'P1 Critical',2:'P2 High',3:'P3 Medium',4:'P4 Low',5:'P5 Nice-to-have'} %}
+        {% set p_colours = {1:'220,53,69',2:'255,193,7',3:'108,117,125',4:'25,135,84',5:'173,181,189'} %}
+        <h5 class="mb-2">
+            Open by room &amp; priority
+            {% if selected_room %}<span class="text-muted fw-normal">— {{ selected_room }}</span>{% endif %}
+        </h5>
+        {% if heatmap.rooms %}
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle mb-0" style="width:auto">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-muted fw-normal small" style="min-width:9rem">Room</th>
+                        {% for p in heatmap.priorities %}
+                        <th class="text-center small" style="min-width:5rem">{{ p_labels.get(p,'P'~p) }}</th>
+                        {% endfor %}
+                        <th class="text-center small" style="min-width:3.5rem">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for room in heatmap.rooms %}
+                    <tr>
+                        <td class="fw-semibold small">{{ room }}</td>
+                        {% for p in heatmap.priorities %}
+                        {% set n = heatmap.matrix[room][p] %}
+                        {% set alpha = (n / heatmap.max_val * 0.75) if heatmap.max_val > 0 else 0 %}
+                        <td class="text-center small"
+                            style="background-color:rgba({{ p_colours.get(p,'108,117,125') }},{{ '%.2f'%alpha }})">
+                            {% if n %}
+                            <a href="/todos?room={{ room }}&priority_max={{ p }}&priority_min={{ p }}&status=open&status=in_progress&status=blocked"
+                               class="text-decoration-none fw-semibold text-reset">{{ n }}</a>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-center small fw-semibold">{{ heatmap.row_totals[room] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light">
+                    <tr>
+                        <td class="small text-muted">Total</td>
+                        {% for p in heatmap.priorities %}
+                        {% set ct = heatmap.col_totals[p] %}
+                        <td class="text-center small fw-semibold">{{ ct if ct else '—' }}</td>
+                        {% endfor %}
+                        <td class="text-center small fw-semibold">{{ heatmap.grand_total }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted">No open todos{% if selected_room %} in {{ selected_room }}{% endif %}.</p>
+        {% endif %}
+    </div>
+
+</div>
+{% endblock %}
