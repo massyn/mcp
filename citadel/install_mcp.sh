@@ -26,6 +26,7 @@ python3 -m venv /opt/mcp/venv
 # Write .env to /opt/mcp/relay
 # If values already exist from a previous run, reuse them; otherwise generate/prompt.
 ENV_FILE=/opt/mcp/relay/.env
+SLUG=citadel
 
 if [ -f "$ENV_FILE" ]; then
     RELAY_TOKEN=$(grep -E '^RELAY_TOKEN=' "$ENV_FILE" | cut -d= -f2-)
@@ -62,7 +63,7 @@ RELAY_BASE_URL=${RELAY_BASE_URL}
 RELAY_CLIENT_ID=${RELAY_CLIENT_ID}
 RELAY_CLIENT_SECRET=${RELAY_CLIENT_SECRET}
 DB_TYPE=sqlite
-DB_PATH=/data/citadel/citadel.db
+DB_PATH=/data/${SLUG}/${SLUG}.db
 EOF
 
 echo ""
@@ -73,9 +74,9 @@ echo "======================================================"
 echo ""
 
 # Write the systemd service file
-cat > /etc/systemd/system/relay.service << EOF
+cat > /etc/systemd/system/${SLUG}.service << EOF
 [Unit]
-Description=Relay MCP server
+Description={$SLUG} Relay MCP server
 After=network.target
 
 [Service]
@@ -92,7 +93,7 @@ WantedBy=multi-user.target
 EOF
 
 # Write the nginx config
-cat > /etc/nginx/sites-enabled/mcp.conf << EOF
+cat > /etc/nginx/sites-enabled/${SLUG}.conf << EOF
 server {
     listen 80;
     server_name mcp.massyn.net;
@@ -102,8 +103,8 @@ server {
         add_header Content-Type text/plain;
     }
 
-    # MCP traffic (OAuth sub-paths /citadel/authorize, /token also flow through here)
-    location /citadel {
+    # MCP traffic (OAuth sub-paths /${SLUG}/authorize, /token also flow through here)
+    location /${SLUG} {
         proxy_pass http://localhost:8788/mcp;
         proxy_http_version 1.1;
         proxy_set_header Host localhost;
@@ -124,6 +125,6 @@ EOF
 
 # Reload systemd, enable and restart the relay service, then restart nginx
 systemctl daemon-reload
-systemctl enable relay
-systemctl restart relay
+systemctl enable ${SLUG}
+systemctl restart ${SLUG}
 systemctl restart nginx
