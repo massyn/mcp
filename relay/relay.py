@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
 
+import oauth
 from engine import Engine, build_db, load_sql_files, make_jinja_env, render_steps
 
 _log = logging.getLogger("relay")
@@ -62,16 +63,45 @@ def _make_tool_fn(tool_def: dict, engine: Engine):
 
 
 # ---------------------------------------------------------------------------
-# HTTP bearer authentication
+# HTTP transport
 # ---------------------------------------------------------------------------
 
-def _make_bearer_middleware(app, token: str):
-    async def middleware(scope, receive, send):
-        if scope["type"] == "http":
+def _run_http(
+    mcp: FastMCP,
+    host: str,
+    port: int,
+    token: str | None,
+    base_url: str | None,
+    client_id: str | None,
+    client_secret: str | None,
+) -> None:
+    import uvicorn
+    mcp_app = mcp.streamable_http_app()
+
+    async def app(scope, receive, send):
+        if scope["type"] != "http":
+            await mcp_app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+
+        # OAuth paths are unauthenticated — handled before the bearer check.
+        if base_url and oauth.is_oauth_path(path):
+            await oauth.dispatch(
+                scope, receive, send,
+                base_url=base_url,
+                relay_token=token or "",
+                client_id=client_id or "",
+                client_secret=client_secret or "",
+            )
+            return
+
+        # Bearer token check for all other paths.
+        if token:
             headers = {k.lower(): v for k, v in scope.get("headers", [])}
             auth = headers.get(b"authorization", b"").decode()
             if auth != f"Bearer {token}":
-                body = b"Unauthorized"
+                body = b"Unauthorised"
                 await send({
                     "type": "http.response.start",
                     "status": 401,
@@ -83,15 +113,9 @@ def _make_bearer_middleware(app, token: str):
                 })
                 await send({"type": "http.response.body", "body": body})
                 return
-        await app(scope, receive, send)
-    return middleware
 
+        await mcp_app(scope, receive, send)
 
-def _run_http(mcp: FastMCP, host: str, port: int, token: str | None) -> None:
-    import uvicorn
-    app = mcp.streamable_http_app()
-    if token:
-        app = _make_bearer_middleware(app, token)
     uvicorn.run(app, host=host, port=port)
 
 
@@ -131,6 +155,20 @@ def _resolve_config(args: argparse.Namespace) -> dict:
     host = args.host or os.environ.get("RELAY_HOST", "0.0.0.0")
     port = args.port or int(os.environ.get("RELAY_PORT", "8788"))
     token = args.token or os.environ.get("RELAY_TOKEN")
+    base_url = args.base_url or os.environ.get("RELAY_BASE_URL")
+    client_id = os.environ.get("RELAY_CLIENT_ID")
+    client_secret = os.environ.get("RELAY_CLIENT_SECRET")
+
+    if base_url:
+        base_url = base_url.rstrip("/")
+        if not token:
+            raise RuntimeError(
+                "RELAY_TOKEN must be set when RELAY_BASE_URL is configured"
+            )
+        if not client_id or not client_secret:
+            raise RuntimeError(
+                "RELAY_CLIENT_ID and RELAY_CLIENT_SECRET must be set when RELAY_BASE_URL is configured"
+            )
 
     return {
         "code_path": code_path,
@@ -142,6 +180,9 @@ def _resolve_config(args: argparse.Namespace) -> dict:
         "host": host,
         "port": port,
         "relay_token": token,
+        "relay_base_url": base_url,
+        "relay_client_id": client_id,
+        "relay_client_secret": client_secret,
     }
 
 
@@ -162,6 +203,9 @@ def main() -> None:
                         help="Port for HTTP transport (overrides RELAY_PORT, default: 8788)")
     parser.add_argument("--token", default=None,
                         help="Bearer token for HTTP auth (overrides RELAY_TOKEN)")
+    parser.add_argument("--base-url", default=None,
+                        help="Public base URL of this server, e.g. https://mcp.example.com/citadel "
+                             "(overrides RELAY_BASE_URL). Required to enable OAuth 2.1 for remote clients.")
     parser.add_argument(
         "--debug", action="store_true", help="Debug mode: run one tool and exit"
     )
@@ -251,11 +295,21 @@ def main() -> None:
 
     if cfg["transport"] == "http":
         _log.info("Starting HTTP server on %s:%d", cfg["host"], cfg["port"])
+        if cfg["relay_base_url"]:
+            _log.info("OAuth 2.1 enabled — base URL: %s", cfg["relay_base_url"])
         if cfg["relay_token"]:
             _log.info("Bearer token authentication enabled")
         else:
             _log.warning("HTTP transport started without authentication — consider setting RELAY_TOKEN")
-        _run_http(mcp, cfg["host"], cfg["port"], cfg["relay_token"])
+        _run_http(
+            mcp,
+            cfg["host"],
+            cfg["port"],
+            cfg["relay_token"],
+            cfg["relay_base_url"],
+            cfg["relay_client_id"],
+            cfg["relay_client_secret"],
+        )
     else:
         mcp.run()
 

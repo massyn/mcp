@@ -97,6 +97,9 @@ All configuration is via environment variables. A `.env` file in the working dir
 | `RELAY_HOST` | `--host` | Bind address for HTTP transport (default: `0.0.0.0`) |
 | `RELAY_PORT` | `--port` | Port for HTTP transport (default: `8788`) |
 | `RELAY_TOKEN` | `--token` | Bearer token for HTTP transport (no auth if unset) |
+| `RELAY_BASE_URL` | `--base-url` | Public base URL of this server, e.g. `https://mcp.example.com/citadel`. Required to enable OAuth 2.1. Must be set together with `RELAY_TOKEN`, `RELAY_CLIENT_ID`, and `RELAY_CLIENT_SECRET`. |
+| `RELAY_CLIENT_ID` | — | OAuth client ID to register in Claude.ai (or any OAuth client). Generate with `openssl rand -hex 16`. |
+| `RELAY_CLIENT_SECRET` | — | OAuth client secret. Generate with `openssl rand -hex 32`. |
 | `DB_TYPE` | — | `sqlite` or `turso`; auto-detected from `TURSO_URL` if not set |
 | `DB_PATH` | — | SQLite path (default: `~/.relay/relay.db`) |
 | `TURSO_URL` | — | Turso database URL (`libsql://...`); presence implies `DB_TYPE=turso` |
@@ -124,7 +127,7 @@ RELAY_CODE=./citadel
 DB_PATH=./citadel/citadel.db
 ```
 
-**HTTP example** (for remote MCP clients):
+**HTTP example** (for remote MCP clients, e.g. Claude Mobile):
 
 ```ini
 # .env
@@ -133,7 +136,21 @@ DB_PATH=./citadel/citadel.db
 RELAY_TRANSPORT=http
 RELAY_PORT=8788
 RELAY_TOKEN=your-secret-token
+RELAY_BASE_URL=https://mcp.example.com/citadel
+RELAY_CLIENT_ID=generated-with-openssl-rand-hex-16
+RELAY_CLIENT_SECRET=generated-with-openssl-rand-hex-32
 ```
+
+`RELAY_BASE_URL` is the public URL clients reach the server at. It is used to build OAuth 2.1 metadata and must match the URL clients actually connect to. Leave it unset for local/stdio use.
+
+The `RELAY_CLIENT_ID` and `RELAY_CLIENT_SECRET` are the credentials you paste into Claude.ai (or any OAuth client) when adding the MCP server. Generate them once:
+
+```bash
+openssl rand -hex 16   # client ID
+openssl rand -hex 32   # client secret
+```
+
+The `RELAY_TOKEN` is the bearer token that relay validates on every MCP request. Both the OAuth flow and direct bearer access resolve to this token — the OAuth flow simply hands it to the client after credential verification.
 
 Then start:
 
@@ -216,6 +233,7 @@ server {
     listen 80;
     server_name your-domain.example.com;
 
+    # MCP traffic (and the OAuth sub-paths /citadel/authorize, /token, /register)
     location /citadel {
         proxy_pass http://localhost:8788/mcp;
         proxy_http_version 1.1;
@@ -225,6 +243,15 @@ server {
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 86400s;
+    }
+
+    # OAuth 2.1 discovery endpoints — required for remote clients such as Claude Mobile.
+    # These are served at the domain root per RFC 8414 / RFC 9728.
+    location /.well-known/ {
+        proxy_pass http://localhost:8788/.well-known/;
+        proxy_http_version 1.1;
+        proxy_set_header Host localhost;
+        proxy_set_header X-Real-IP $remote_addr;
     }
 }
 ```
@@ -262,6 +289,9 @@ DB_PATH=/opt/relay/citadel/citadel.db
 RELAY_TRANSPORT=http
 RELAY_PORT=8788
 RELAY_TOKEN=your-secret-token
+RELAY_BASE_URL=https://mcp.example.com/citadel
+RELAY_CLIENT_ID=generated-with-openssl-rand-hex-16
+RELAY_CLIENT_SECRET=generated-with-openssl-rand-hex-32
 ```
 
 Reload systemd, enable the service to start on boot, then start it:

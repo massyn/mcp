@@ -24,25 +24,53 @@ python3 -m venv /opt/mcp/venv
 /opt/mcp/venv/bin/pip install -q -r /opt/mcp/relay/requirements.txt
 
 # Write .env to /opt/mcp/relay
-# If RELAY_TOKEN already exists from a previous run, reuse it; otherwise prompt.
+# If values already exist from a previous run, reuse them; otherwise generate/prompt.
 ENV_FILE=/opt/mcp/relay/.env
 
 if [ -f "$ENV_FILE" ]; then
     RELAY_TOKEN=$(grep -E '^RELAY_TOKEN=' "$ENV_FILE" | cut -d= -f2-)
+    RELAY_BASE_URL=$(grep -E '^RELAY_BASE_URL=' "$ENV_FILE" | cut -d= -f2-)
+    RELAY_CLIENT_ID=$(grep -E '^RELAY_CLIENT_ID=' "$ENV_FILE" | cut -d= -f2-)
+    RELAY_CLIENT_SECRET=$(grep -E '^RELAY_CLIENT_SECRET=' "$ENV_FILE" | cut -d= -f2-)
 fi
 
 if [ -z "$RELAY_TOKEN" ]; then
-    printf 'Enter RELAY_TOKEN: '
-    read -r RELAY_TOKEN
+    RELAY_TOKEN=$(openssl rand -hex 32)
+    echo "Generated RELAY_TOKEN."
+fi
+
+if [ -z "$RELAY_BASE_URL" ]; then
+    printf 'Enter public base URL (e.g. https://mcp.massyn.net/citadel): '
+    read -r RELAY_BASE_URL
+fi
+
+if [ -z "$RELAY_CLIENT_ID" ]; then
+    RELAY_CLIENT_ID=$(openssl rand -hex 16)
+    echo "Generated RELAY_CLIENT_ID."
+fi
+
+if [ -z "$RELAY_CLIENT_SECRET" ]; then
+    RELAY_CLIENT_SECRET=$(openssl rand -hex 32)
+    echo "Generated RELAY_CLIENT_SECRET."
 fi
 
 cat > "$ENV_FILE" << EOF
 RELAY_CODE=/opt/mcp/relay/citadel/
 RELAY_TRANSPORT=http
 RELAY_TOKEN=${RELAY_TOKEN}
+RELAY_BASE_URL=${RELAY_BASE_URL}
+RELAY_CLIENT_ID=${RELAY_CLIENT_ID}
+RELAY_CLIENT_SECRET=${RELAY_CLIENT_SECRET}
 DB_TYPE=sqlite
 DB_PATH=/data/citadel/citadel.db
 EOF
+
+echo ""
+echo "=== OAuth credentials (paste these into Claude.ai) ==="
+echo "  Client ID     : ${RELAY_CLIENT_ID}"
+echo "  Client Secret : ${RELAY_CLIENT_SECRET}"
+echo "======================================================"
+echo ""
 
 # Write the systemd service file
 cat > /etc/systemd/system/relay.service << EOF
@@ -74,6 +102,7 @@ server {
         add_header Content-Type text/plain;
     }
 
+    # MCP traffic (OAuth sub-paths /citadel/authorize, /token also flow through here)
     location /citadel {
         proxy_pass http://localhost:8788/mcp;
         proxy_http_version 1.1;
@@ -82,6 +111,13 @@ server {
         proxy_buffering off;
         proxy_cache off;
         proxy_read_timeout 86400s;
+    }
+
+    # OAuth 2.1 discovery endpoints (RFC 8414 / RFC 9728)
+    location /.well-known/ {
+        proxy_pass http://localhost:8788/.well-known/;
+        proxy_http_version 1.1;
+        proxy_set_header Host localhost;
     }
 }
 EOF
