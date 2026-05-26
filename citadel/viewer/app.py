@@ -164,9 +164,10 @@ def velocity_view():
         days = 14
     burnup = data.get_burnup_data(room=room, days=days)
     heatmap = data.get_open_heatmap(room=room)
+    deferred_heatmap = data.get_open_heatmap(room=room, statuses=("deferred",))
     return render_template(
         "velocity.html",
-        **_index_ctx(burnup=burnup, heatmap=heatmap, selected_room=room, selected_days=days),
+        **_index_ctx(burnup=burnup, heatmap=heatmap, deferred_heatmap=deferred_heatmap, selected_room=room, selected_days=days),
     )
 
 

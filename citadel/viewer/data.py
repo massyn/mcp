@@ -300,7 +300,7 @@ def get_burnup_data(room: Optional[str] = None, days: int = 14) -> dict:
     date_series = [(start + timedelta(days=i)).isoformat() for i in range(days)]
 
     all_todos: list[dict] = []
-    for s in ("open", "in_progress", "blocked", "deferred", "done"):
+    for s in ("open", "in_progress", "blocked", "done"):
         args: dict = {"status": s, "limit": 1000}
         if room:
             args["room"] = room
@@ -319,7 +319,8 @@ def get_burnup_data(room: Optional[str] = None, days: int = 14) -> dict:
             if not created or created > day:
                 continue
             if completed and completed <= day:
-                closed_count += 1
+                if completed == day:
+                    closed_count += 1
             else:
                 open_count += 1
         open_series.append(open_count)
@@ -328,12 +329,12 @@ def get_burnup_data(room: Optional[str] = None, days: int = 14) -> dict:
     return {"dates": date_series, "open": open_series, "closed": closed_series}
 
 
-def get_open_heatmap(room: Optional[str] = None) -> dict:
+def get_open_heatmap(room: Optional[str] = None, statuses: tuple = ("open", "in_progress", "blocked")) -> dict:
     priorities = [1, 2, 3, 4, 5]
     rooms_seen: list[str] = []
     matrix: dict[str, dict[int, int]] = {}
 
-    for s in ("open", "in_progress", "blocked"):
+    for s in statuses:
         args: dict = {"status": s, "limit": 500}
         if room:
             args["room"] = room

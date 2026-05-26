@@ -172,4 +172,62 @@
     </div>
 
 </div>
+
+{# ── Backlog ──────────────────────────────────────────────────────────────── #}
+<div class="row g-4 mt-2">
+    <div class="col-12">
+        <h5 class="mb-2">
+            Backlog (Deferred)
+            {% if selected_room %}<span class="text-muted fw-normal">— {{ selected_room }}</span>{% endif %}
+        </h5>
+        {% if deferred_heatmap.rooms %}
+        <div class="table-responsive">
+            <table class="table table-bordered table-sm align-middle mb-0" style="width:auto">
+                <thead class="table-light">
+                    <tr>
+                        <th class="text-muted fw-normal small" style="min-width:9rem">Room</th>
+                        {% for p in deferred_heatmap.priorities %}
+                        <th class="text-center small" style="min-width:5rem">{{ p_labels.get(p,'P'~p) }}</th>
+                        {% endfor %}
+                        <th class="text-center small" style="min-width:3.5rem">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for room in deferred_heatmap.rooms %}
+                    <tr>
+                        <td class="fw-semibold small">{{ room }}</td>
+                        {% for p in deferred_heatmap.priorities %}
+                        {% set n = deferred_heatmap.matrix[room][p] %}
+                        {% set alpha = (n / deferred_heatmap.max_val * 0.75) if deferred_heatmap.max_val > 0 else 0 %}
+                        <td class="text-center small"
+                            style="background-color:rgba({{ p_colours.get(p,'108,117,125') }},{{ '%.2f'%alpha }})">
+                            {% if n %}
+                            <a href="/todos?room={{ room }}&priority_max={{ p }}&priority_min={{ p }}&status=deferred"
+                               class="text-decoration-none fw-semibold text-reset">{{ n }}</a>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        {% endfor %}
+                        <td class="text-center small fw-semibold">{{ deferred_heatmap.row_totals[room] }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+                <tfoot class="table-light">
+                    <tr>
+                        <td class="small text-muted">Total</td>
+                        {% for p in deferred_heatmap.priorities %}
+                        {% set ct = deferred_heatmap.col_totals[p] %}
+                        <td class="text-center small fw-semibold">{{ ct if ct else '—' }}</td>
+                        {% endfor %}
+                        <td class="text-center small fw-semibold">{{ deferred_heatmap.grand_total }}</td>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        {% else %}
+        <p class="text-muted">No deferred todos{% if selected_room %} in {{ selected_room }}{% endif %}.</p>
+        {% endif %}
+    </div>
+</div>
 {% endblock %}

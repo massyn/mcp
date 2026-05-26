@@ -123,13 +123,12 @@
                     <div class="row g-3">
                         <div class="col-md-8">
                             <label class="form-label fw-semibold" for="form-room">Room</label>
-                            <input type="text" class="form-control" name="room" id="form-room"
-                                   list="room-datalist" required autocomplete="off">
-                            <datalist id="room-datalist">
+                            <select class="form-select" name="room" id="form-room" required>
+                                <option value="" disabled selected>Select room…</option>
                                 {% for room_name in all_rooms %}
-                                <option value="{{ room_name }}">
+                                <option value="{{ room_name }}">{{ room_name }}</option>
                                 {% endfor %}
-                            </datalist>
+                            </select>
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="form-priority">Priority</label>
@@ -226,9 +225,8 @@
     function openAdd() {
         document.getElementById('todoModalLabel').textContent = 'Add todo';
         form.action = '/todos/add';
-        document.getElementById('form-room').value     = '';
-        document.getElementById('form-room').readOnly  = false;
-        document.getElementById('form-room').classList.remove('bg-light');
+        document.getElementById('form-room').value    = '';
+        document.getElementById('form-room').disabled = false;
         document.getElementById('form-title').value    = '';
         document.getElementById('form-detail').value   = '';
         document.getElementById('form-priority').value = '3';
@@ -240,9 +238,8 @@
     function openEdit(d) {
         document.getElementById('todoModalLabel').textContent = '#' + d.id + ' — ' + d.title;
         form.action = '/todos/' + d.id + '/update';
-        document.getElementById('form-room').value     = d.room;
-        document.getElementById('form-room').readOnly  = true;
-        document.getElementById('form-room').classList.add('bg-light');
+        document.getElementById('form-room').value    = d.room;
+        document.getElementById('form-room').disabled = true;
         document.getElementById('form-title').value    = d.title;
         document.getElementById('form-detail').value   = d.detail || '';
         document.getElementById('form-priority').value = d.priority;
