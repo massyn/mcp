@@ -310,14 +310,18 @@ def get_burnup_data(room: Optional[str] = None, days: int = 14) -> dict:
 
     open_series: list[int] = []
     closed_series: list[int] = []
+    created_series: list[int] = []
     for day in date_series:
         open_count = 0
         closed_count = 0
+        created_count = 0
         for t in all_todos:
             created = (t.get("created_on") or "")[:10]
             completed = (t.get("completed_on") or "")[:10]
             if not created or created > day:
                 continue
+            if created == day:
+                created_count += 1
             if completed and completed <= day:
                 if completed == day:
                     closed_count += 1
@@ -325,8 +329,9 @@ def get_burnup_data(room: Optional[str] = None, days: int = 14) -> dict:
                 open_count += 1
         open_series.append(open_count)
         closed_series.append(closed_count)
+        created_series.append(created_count)
 
-    return {"dates": date_series, "open": open_series, "closed": closed_series}
+    return {"dates": date_series, "open": open_series, "closed": closed_series, "created": created_series}
 
 
 def get_open_heatmap(room: Optional[str] = None, statuses: tuple = ("open", "in_progress", "blocked")) -> dict:
