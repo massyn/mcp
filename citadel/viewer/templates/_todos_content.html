@@ -239,7 +239,7 @@
         document.getElementById('todoModalLabel').textContent = '#' + d.id + ' — ' + d.title;
         form.action = '/todos/' + d.id + '/update';
         document.getElementById('form-room').value    = d.room;
-        document.getElementById('form-room').disabled = true;
+        document.getElementById('form-room').disabled = false;
         document.getElementById('form-title').value    = d.title;
         document.getElementById('form-detail').value   = d.detail || '';
         document.getElementById('form-priority').value = d.priority;

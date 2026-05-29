@@ -149,9 +149,10 @@ def todo_update(todo_id: int):
     priority = int(request.form.get("priority", 3))
     due_date = request.form.get("due_date", "").strip() or None
     status = request.form.get("status", "").strip() or None
+    room = request.form.get("room", "").strip() or None
     data.update_todo(
         todo_id=todo_id, title=title, detail=detail,
-        priority=priority, due_date=due_date, status=status,
+        priority=priority, due_date=due_date, status=status, room=room,
     )
     return redirect(url_for("todos_view"))
 
