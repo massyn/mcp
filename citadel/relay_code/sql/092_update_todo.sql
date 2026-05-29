@@ -31,6 +31,10 @@ parameters:
     type: string
     required: false
     description: Link to a knowledge entry UUID
+  room:
+    type: string
+    required: false
+    description: Move the todo to a different room
 returns: rows_affected=1 on success, 0 if todo not found
 examples:
   - todo_id: 42
@@ -60,5 +64,8 @@ UPDATE todos SET
 {% endif %}
 {% if entry_id is not none %}
   , entry_id = '{{ entry_id }}'
+{% endif %}
+{% if room is not none %}
+  , room = '{{ room }}'
 {% endif %}
 WHERE id = {{ todo_id }}

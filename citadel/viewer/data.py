@@ -60,6 +60,14 @@ def _parse_response(resp: requests.Response) -> dict | None:
     return resp.json()
 
 
+def _reset_session() -> None:
+    global _session_initialized, _session_id
+    with _session_lock:
+        _log.info("Resetting MCP session (will re-initialise on next call)")
+        _session_initialized = False
+        _session_id = None
+
+
 def _ensure_session() -> str | None:
     global _session_initialized, _session_id
     with _session_lock:
@@ -83,61 +91,71 @@ def _ensure_session() -> str | None:
             )
             resp.raise_for_status()
             _session_id = resp.headers.get("Mcp-Session-Id")
-            # Send required initialized notification
-            notify_headers = _base_headers(_session_id)
             requests.post(
                 _ENDPOINT,
                 json={"jsonrpc": "2.0", "method": "notifications/initialized"},
-                headers=notify_headers,
+                headers=_base_headers(_session_id),
                 timeout=10,
             )
             _session_initialized = True
             _log.info("MCP session established: %s", _session_id or "(stateless)")
         except Exception as exc:
-            _log.error("Failed to initialize MCP session: %s", exc)
-            _session_initialized = True  # avoid retry loop
+            _log.error("Failed to initialise MCP session: %s", exc)
+            # Leave _session_initialized = False so the next request retries
         return _session_id
 
 
 def _call(tool: str, **arguments) -> list | dict | None:
-    session_id = _ensure_session()
-    payload = {
-        "jsonrpc": "2.0",
-        "method": "tools/call",
-        "params": {
-            "name": tool,
-            "arguments": {k: v for k, v in arguments.items() if v is not None},
-        },
-        "id": _next_id(),
-    }
-    try:
-        resp = requests.post(
-            _ENDPOINT,
-            json=payload,
-            headers=_base_headers(session_id),
-            timeout=30,
-        )
-        resp.raise_for_status()
-    except requests.RequestException as exc:
-        _log.error("HTTP error calling %s: %s", tool, exc)
+    for attempt in range(2):
+        session_id = _ensure_session()
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "tools/call",
+            "params": {
+                "name": tool,
+                "arguments": {k: v for k, v in arguments.items() if v is not None},
+            },
+            "id": _next_id(),
+        }
+        try:
+            resp = requests.post(
+                _ENDPOINT,
+                json=payload,
+                headers=_base_headers(session_id),
+                timeout=30,
+            )
+            if resp.status_code in (400, 404, 410):
+                _log.warning("Session rejected (%s) on %s — resetting", resp.status_code, tool)
+                _reset_session()
+                continue
+            resp.raise_for_status()
+        except requests.ConnectionError as exc:
+            _log.error("Connection error calling %s: %s", tool, exc)
+            _reset_session()
+            continue
+        except requests.RequestException as exc:
+            _log.error("HTTP error calling %s: %s", tool, exc)
+            return None
+
+        body = _parse_response(resp)
+        if body is None:
+            _log.error("Empty response from %s", tool)
+            return None
+        if "error" in body:
+            _log.error("MCP error calling %s: %s", tool, body["error"])
+            return None
+
+        content = body.get("result", {}).get("content", [])
+        for block in content:
+            if block.get("type") == "text":
+                try:
+                    return json.loads(block["text"])
+                except (json.JSONDecodeError, TypeError):
+                    _log.warning("Non-JSON text from %s", tool)
+                    return None
         return None
 
-    body = _parse_response(resp)
-    if body is None:
-        _log.error("Empty response from %s", tool)
-        return None
-    if "error" in body:
-        _log.error("MCP error calling %s: %s", tool, body["error"])
-        return None
-
-    content = body.get("result", {}).get("content", [])
-    for block in content:
-        if block.get("type") == "text":
-            try:
-                return json.loads(block["text"])
-            except (json.JSONDecodeError, TypeError):
-                _log.warning("Non-JSON text from %s", tool)
-                return None
+    _log.error("Gave up calling %s after retries", tool)
     return None
 
 
@@ -255,6 +273,7 @@ def update_todo(
     priority: Optional[int] = None,
     due_date: Optional[str] = None,
     status: Optional[str] = None,
+    room: Optional[str] = None,
 ) -> dict:
     args: dict = {"todo_id": todo_id}
     if title is not None:
@@ -267,6 +286,8 @@ def update_todo(
         args["due_date"] = due_date
     if status is not None:
         args["status"] = status
+    if room is not None:
+        args["room"] = room
     return _call("update_todo", **args) or {}
 
 

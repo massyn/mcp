@@ -35,12 +35,10 @@ export AWS_ACCESS_KEY_ID=your_access_key
 export AWS_SECRET_ACCESS_KEY=your_secret_key
 ```
 
-3. Register with Claude Desktop using the install script from the repository root:
+3. Register with Claude Code from the repository root:
 ```bash
-python install.py route53
+claude mcp add route53 -- python $(pwd)/route53/mcpdns.py
 ```
-
-Restart Claude Desktop after running.
 
 ## AWS Permissions Required
 
@@ -64,49 +62,12 @@ Your AWS IAM user/role needs the following permissions:
 
 `CheckDomainAvailability` is required for the availability checker. `ListDomains` and `GetDomainDetail` are required to list registered domains with full detail.
 
-## Configuration for Claude Desktop
+## Configuration
 
-Run the install script from the repository root — it detects `python3` or `python` automatically and writes the correct config for your platform:
+The `claude mcp add` command writes the correct config for your platform automatically. To pass a specific AWS profile, add it as an environment variable:
 
 ```bash
-python install.py route53
-```
-
-Config file locations:
-- Windows: `%APPDATA%\Claude\claude_desktop_config.json`
-- macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`
-
-The resulting config entry looks like:
-
-```json
-{
-  "mcpServers": {
-    "route53": {
-      "command": "python3",
-      "args": ["/path/to/route53/mcpdns.py"],
-      "alwaysAllow": ["check_domain_availability", "list_registered_domains"]
-    }
-  }
-}
-```
-
-## Using with Specific AWS Profiles
-
-To use a specific AWS profile, add an `env` block to the config entry manually after running the install script:
-
-```json
-{
-  "mcpServers": {
-    "route53": {
-      "command": "python3",
-      "args": ["/path/to/route53/mcpdns.py"],
-      "alwaysAllow": ["check_domain_availability", "list_registered_domains"],
-      "env": {
-        "AWS_PROFILE": "production"
-      }
-    }
-  }
-}
+claude mcp add route53 --env AWS_PROFILE=production -- python $(pwd)/route53/mcpdns.py
 ```
 
 ## Usage in Claude

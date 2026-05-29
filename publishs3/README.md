@@ -27,13 +27,11 @@ pip install playwright
 playwright install chromium
 ```
 
-Register with Claude Desktop from the repository root:
+Register with Claude Code from the repository root:
 
 ```bash
-python install.py publishs3
+claude mcp add publishs3 -- python $(pwd)/publishs3/publishs3_mcp.py
 ```
-
-Restart Claude Desktop after running.
 
 ---
 
@@ -127,9 +125,7 @@ Requires Playwright and Chromium. Returns the public URL on success, or an error
 ## File Structure
 
 ```
-install.py            — registers MCP servers with Claude Desktop (repo root)
 publishs3/
-  mcp.json            — install manifest (entry point + alwaysAllow list)
   publishs3_mcp.py    — MCP server and tools
   requirements.txt    — dependencies
   .env_example        — configuration template
