@@ -23,9 +23,9 @@ chown -R www-data:www-data /data/citadel
 python3 -m venv /opt/mcp/venv
 /opt/mcp/venv/bin/pip install -q -r /opt/mcp/relay/requirements.txt
 
-# Write .env to /opt/mcp/relay
+# Write .env to /data/citadel
 # If values already exist from a previous run, reuse them; otherwise generate/prompt.
-ENV_FILE=/opt/mcp/relay/.env
+ENV_FILE=/data/citadel/.env
 SLUG=citadel
 
 if [ -f "$ENV_FILE" ]; then
@@ -56,7 +56,7 @@ if [ -z "$RELAY_CLIENT_SECRET" ]; then
 fi
 
 cat > "$ENV_FILE" << EOF
-RELAY_CODE=/opt/mcp/relay/citadel/
+RELAY_CODE=/opt/mcp/citadel/relay_code/
 RELAY_TRANSPORT=http
 RELAY_TOKEN=${RELAY_TOKEN}
 RELAY_BASE_URL=${RELAY_BASE_URL}

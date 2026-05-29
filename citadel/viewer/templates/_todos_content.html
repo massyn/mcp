@@ -1,4 +1,4 @@
-{% set priority_colours = {1: 'danger', 2: 'warning text-dark', 3: 'secondary', 4: 'success', 5: 'light text-dark border'} %}
+{% set priority_colours = {1: 'danger', 2: 'warning text-dark', 3: 'secondary', 4: 'success', 5: 'secondary'} %}
 {% set priority_labels  = {1: 'Critical', 2: 'High', 3: 'Medium', 4: 'Low', 5: 'Nice-to-have'} %}
 {% set status_colours   = {'open': 'primary', 'in_progress': 'warning text-dark', 'blocked': 'danger', 'done': 'success', 'cancelled': 'secondary', 'deferred': 'info text-dark'} %}
 
@@ -8,7 +8,7 @@
       hx-target="#main-content"
       hx-trigger="change">
 
-    <div class="card bg-light border mb-2">
+    <div class="card border mb-2">
         <div class="card-body py-2 px-3">
             <div class="d-flex flex-wrap gap-4 align-items-center">
 
@@ -62,7 +62,7 @@
 {% if todos %}
 <div class="table-responsive">
     <table id="todo-table" class="table table-hover table-sm align-middle mb-0">
-        <thead class="table-light">
+        <thead class="table-dark">
             <tr>
                 <th class="sortable" data-col="0" data-type="num"  style="width:3.5rem">#</th>
                 <th class="sortable" data-col="1" data-type="str"  style="width:9rem">Room</th>

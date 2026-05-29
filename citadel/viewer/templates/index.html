@@ -10,7 +10,7 @@
 
 <div id="sidebar-rooms">
     {% for room in rooms %}
-    <a class="nav-link room-link py-1 px-2 text-dark d-flex justify-content-between align-items-center"
+    <a class="nav-link room-link py-1 px-2 d-flex justify-content-between align-items-center"
        href="/room/{{ room.name }}"
        hx-get="/room/{{ room.name }}"
        hx-target="#main-content"
@@ -24,7 +24,7 @@
 <div id="sidebar-tags" style="display:none">
     {% if tags %}
     {% for tag, count in tags %}
-    <a class="nav-link room-link tag-link py-1 px-2 text-dark d-flex justify-content-between align-items-center"
+    <a class="nav-link room-link tag-link py-1 px-2 d-flex justify-content-between align-items-center"
        href="/tag/{{ tag | urlencode }}"
        hx-get="/tag/{{ tag | urlencode }}"
        hx-target="#main-content"

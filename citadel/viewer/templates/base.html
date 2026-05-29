@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -8,34 +8,118 @@
     <script src="https://cdn.jsdelivr.net/npm/marked@15.0.12/marked.min.js"></script>
     <script src="https://unpkg.com/htmx.org@2.0.4/dist/htmx.min.js"></script>
     <style>
+        /* ── Steel Night palette ── */
+        :root {
+            --cs-body:      #0f172a;
+            --cs-surface:   #1e293b;
+            --cs-sidebar:   #131e30;
+            --cs-navbar:    #090f1d;
+            --cs-border:    #2d4060;
+            --cs-text:      #e2e8f0;
+            --cs-muted:     #8299b5;
+            --cs-accent:    #60a5fa;
+            --cs-accent-bg: #1a3358;
+            --cs-code-bg:   #0b1526;
+            --cs-tag-bg:    #1b304f;
+            --cs-tag-text:  #93c5fd;
+        }
+
+        /* Bootstrap dark-mode overrides */
+        [data-bs-theme="dark"] {
+            --bs-body-bg:          var(--cs-body);
+            --bs-body-bg-rgb:      15, 23, 42;
+            --bs-body-color:       var(--cs-text);
+            --bs-secondary-bg:     var(--cs-surface);
+            --bs-tertiary-bg:      var(--cs-sidebar);
+            --bs-border-color:     var(--cs-border);
+            --bs-secondary-color:  var(--cs-muted);
+            --bs-primary-rgb:      96, 165, 250;
+            --bs-link-color-rgb:   96, 165, 250;
+            --bs-link-hover-color-rgb: 147, 197, 253;
+            --bs-card-bg:          var(--cs-surface);
+            --bs-list-group-bg:    var(--cs-surface);
+            --bs-list-group-border-color: var(--cs-border);
+            --bs-modal-bg:         var(--cs-surface);
+        }
+
+        /* Navbar */
+        .navbar { background-color: var(--cs-navbar) !important; border-bottom: 1px solid var(--cs-border); }
+
+        /* Sidebar */
         .sidebar {
             height: calc(100vh - 56px);
             overflow-y: auto;
             position: sticky;
             top: 56px;
+            background-color: var(--cs-sidebar) !important;
+            border-color: var(--cs-border) !important;
         }
-        .room-link { border-radius: 4px; transition: background .1s; }
-        .room-link.active { background-color: var(--bs-primary-bg-subtle); font-weight: 500; }
+        .room-link { border-radius: 4px; transition: background .15s; }
+        .room-link:hover { background-color: var(--cs-accent-bg); }
+        .room-link.active { background-color: var(--cs-accent-bg) !important; color: var(--cs-accent) !important; font-weight: 500; }
+
+        /* bg-light override (legacy templates) */
+        .bg-light { background-color: var(--cs-surface) !important; }
+        .table-light {
+            --bs-table-bg:           var(--cs-sidebar);
+            --bs-table-color:        var(--cs-text);
+            --bs-table-border-color: var(--cs-border);
+        }
+
+        /* List group */
+        .list-group-item { background-color: var(--cs-surface); border-color: var(--cs-border); }
+        .list-group-item-action:hover,
+        .list-group-item-action:focus { background-color: var(--cs-accent-bg); color: var(--cs-text); }
+
+        /* Main content area */
         #main-content { min-height: calc(100vh - 56px); }
+
+        /* Prose (rendered Markdown) */
         .prose img { max-width: 100%; }
-        .prose pre { background: #f8f9fa; padding: 1rem; border-radius: .25rem; overflow-x: auto; }
-        .prose code:not(pre code) { background: #f1f3f5; padding: .1em .35em; border-radius: .2em; font-size: .9em; }
-        .prose blockquote { border-left: 3px solid #dee2e6; padding-left: 1rem; color: #6c757d; }
+        .prose pre {
+            background: var(--cs-code-bg);
+            padding: 1rem;
+            border-radius: .3rem;
+            overflow-x: auto;
+            border: 1px solid var(--cs-border);
+            color: #c5d8f0;
+        }
+        .prose code:not(pre code) {
+            background: var(--cs-tag-bg);
+            padding: .1em .35em;
+            border-radius: .2em;
+            font-size: .9em;
+            color: var(--cs-tag-text);
+        }
+        .prose blockquote {
+            border-left: 3px solid var(--cs-accent);
+            padding-left: 1rem;
+            color: var(--cs-muted);
+        }
         .prose table { width: 100%; border-collapse: collapse; margin-bottom: 1rem; }
-        .prose th, .prose td { border: 1px solid #dee2e6; padding: .4rem .6rem; }
-        .prose th { background: #f8f9fa; }
-        .priority-1 { border-left: 3px solid #dc3545; }
-        .priority-2 { border-left: 3px solid #fd7e14; }
-        .priority-3 { border-left: 3px solid #6c757d; }
-        .priority-4 { border-left: 3px solid #198754; }
-        .priority-5 { border-left: 3px solid #adb5bd; }
+        .prose th, .prose td { border: 1px solid var(--cs-border); padding: .4rem .6rem; }
+        .prose th { background: var(--cs-code-bg); color: var(--cs-accent); }
+
+        /* Tag badges used in entries/search */
+        .badge-tag {
+            background-color: var(--cs-tag-bg) !important;
+            color: var(--cs-tag-text) !important;
+            border: 1px solid var(--cs-border) !important;
+        }
+
+        /* Priority stripe */
+        .priority-1 { border-left: 3px solid #ef4444; }
+        .priority-2 { border-left: 3px solid #f97316; }
+        .priority-3 { border-left: 3px solid #64748b; }
+        .priority-4 { border-left: 3px solid #22c55e; }
+        .priority-5 { border-left: 3px solid #475569; }
     </style>
 </head>
 <body>
     {% set _nav_room = (active_room if active_room is defined and active_room) or (selected_room if selected_room is defined and selected_room) or none %}
-    <nav class="navbar navbar-dark bg-dark sticky-top">
+    <nav class="navbar navbar-dark sticky-top">
         <div class="container-fluid gap-2">
-            <a class="navbar-brand me-2 flex-shrink-0" href="/">Citadel</a>
+            <a class="navbar-brand me-2 flex-shrink-0" href="/" style="color:var(--cs-accent);letter-spacing:.03em">Citadel</a>
             <div class="flex-grow-1">
                 <input class="form-control form-control-sm"
                        type="search"
@@ -44,7 +128,8 @@
                        hx-get="/search"
                        hx-target="#main-content"
                        hx-trigger="input changed delay:400ms, search"
-                       autocomplete="off">
+                       autocomplete="off"
+                       style="background-color:var(--cs-surface);border-color:var(--cs-border);color:var(--cs-text)">
             </div>
             <a class="btn btn-outline-light btn-sm flex-shrink-0" href="{% if _nav_room %}/room/{{ _nav_room }}{% else %}/{% endif %}">Entries</a>
             <a class="btn btn-outline-light btn-sm flex-shrink-0" href="/todos{% if _nav_room %}?room={{ _nav_room }}{% endif %}">Todos</a>
@@ -55,7 +140,7 @@
     <div class="container-fluid p-0">
         <div class="row g-0">
             {% if self.sidebar() | trim %}
-            <div class="col-md-3 col-xl-2 sidebar border-end bg-light px-2 py-3 d-none d-md-block">
+            <div class="col-md-3 col-xl-2 sidebar border-end px-2 py-3 d-none d-md-block">
                 {% block sidebar %}{% endblock %}
             </div>
             <div class="col-md-9 col-xl-10 p-3">

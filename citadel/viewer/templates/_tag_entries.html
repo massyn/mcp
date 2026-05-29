@@ -28,7 +28,7 @@
         {% if entry.tags %}
         <div>
             {% for t in entry.tags %}
-            <span class="badge {% if t == tag %}bg-primary{% else %}bg-light text-dark border{% endif %} me-1">{{ t }}</span>
+            <span class="badge {% if t == tag %}bg-primary{% else %}badge-tag{% endif %} me-1">{{ t }}</span>
             {% endfor %}
         </div>
         {% endif %}

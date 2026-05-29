@@ -44,7 +44,7 @@
                     label: 'Opened',
                     data: createdData,
                     fill: false,
-                    borderColor:     'rgba(0,0,0,0.85)',
+                    borderColor:     'rgba(226,232,240,0.75)',
                     borderWidth: 2,
                     borderDash: [6, 4],
                     tension: 0.3,
@@ -58,16 +58,21 @@
             maintainAspectRatio: false,
             interaction: { mode: 'index', intersect: false },
             plugins: {
-                legend: { position: 'top' },
+                legend: {
+                    position: 'top',
+                    labels: { color: '#e2e8f0' },
+                },
             },
             scales: {
                 x: {
-                    ticks: { autoSkip: true, maxTicksLimit: 14 },
+                    ticks: { autoSkip: true, maxTicksLimit: 14, color: '#8299b5' },
+                    grid: { color: 'rgba(45,64,96,0.6)' },
                 },
                 y: {
                     beginAtZero: true,
-                    ticks: { stepSize: 1, precision: 0 },
-                    title: { display: true, text: 'Count' },
+                    ticks: { stepSize: 1, precision: 0, color: '#8299b5' },
+                    grid: { color: 'rgba(45,64,96,0.6)' },
+                    title: { display: true, text: 'Count', color: '#8299b5' },
                 },
             },
         },
@@ -79,7 +84,7 @@
 {% block content %}
 
 {# ── Filters ──────────────────────────────────────────────────────────── #}
-<div class="card bg-light border mb-4">
+<div class="card border mb-4">
     <div class="card-body py-2 px-3">
         <div class="d-flex flex-wrap align-items-center gap-3">
 
@@ -136,7 +141,7 @@
         {% if heatmap.rooms %}
         <div class="table-responsive">
             <table class="table table-bordered table-sm align-middle mb-0" style="width:auto">
-                <thead class="table-light">
+                <thead class="table-dark">
                     <tr>
                         <th class="text-muted fw-normal small" style="min-width:9rem">Room</th>
                         {% for p in heatmap.priorities %}
@@ -166,7 +171,7 @@
                     </tr>
                     {% endfor %}
                 </tbody>
-                <tfoot class="table-light">
+                <tfoot class="table-dark">
                     <tr>
                         <td class="small text-muted">Total</td>
                         {% for p in heatmap.priorities %}
@@ -195,7 +200,7 @@
         {% if deferred_heatmap.rooms %}
         <div class="table-responsive">
             <table class="table table-bordered table-sm align-middle mb-0" style="width:auto">
-                <thead class="table-light">
+                <thead class="table-dark">
                     <tr>
                         <th class="text-muted fw-normal small" style="min-width:9rem">Room</th>
                         {% for p in deferred_heatmap.priorities %}
@@ -225,7 +230,7 @@
                     </tr>
                     {% endfor %}
                 </tbody>
-                <tfoot class="table-light">
+                <tfoot class="table-dark">
                     <tr>
                         <td class="small text-muted">Total</td>
                         {% for p in deferred_heatmap.priorities %}
