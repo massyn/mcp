@@ -4,9 +4,10 @@ import json
 import logging
 import os
 import threading
+import time
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import requests
 from dotenv import load_dotenv
@@ -25,6 +26,24 @@ _session_initialized = False
 _session_id: str | None = None
 _req_lock = threading.Lock()
 _req_id = 0
+
+_CACHE_TTL = int(os.environ.get("CITADEL_CACHE_TTL", "300"))
+_cache: dict[str, tuple[float, Any]] = {}
+_cache_lock = threading.Lock()
+_MISSING = object()
+
+
+def _cache_get(key: str) -> Any:
+    with _cache_lock:
+        entry = _cache.get(key)
+        if entry is not None and time.monotonic() - entry[0] < _CACHE_TTL:
+            return entry[1]
+        return _MISSING
+
+
+def _cache_set(key: str, value: Any) -> None:
+    with _cache_lock:
+        _cache[key] = (time.monotonic(), value)
 
 
 def _next_id() -> int:
@@ -177,14 +196,23 @@ def init_schema() -> None:
 
 
 def get_manifest(tags: Optional[list] = None) -> dict:
+    key = "manifest"
+    cached = _cache_get(key)
+    if cached is not _MISSING:
+        return cached
     rows = _call("get_manifest") or []
     if not isinstance(rows, list):
         rows = []
-    rooms = sorted(rows, key=lambda r: r["name"].lower())
-    return {"rooms": rooms}
+    result = {"rooms": sorted(rows, key=lambda r: r["name"].lower())}
+    _cache_set(key, result)
+    return result
 
 
 def get_room(room: str, status: str = "active", limit: int = 50, offset: int = 0) -> dict:
+    key = f"room:{room}:{status}:{limit}:{offset}"
+    cached = _cache_get(key)
+    if cached is not _MISSING:
+        return cached
     rows = _call("get_room", room=room, status=status, limit=limit, offset=offset) or []
     if not isinstance(rows, list):
         return {"error": f"room not found: {room}"}
@@ -200,10 +228,16 @@ def get_room(room: str, status: str = "active", limit: int = 50, offset: int = 0
         e["tags"] = _parse_tags(e.get("tags"))
         e.setdefault("room", room)
         entries.append(e)
-    return {"entries": entries, "total": total, "offset": offset, "limit": limit}
+    result = {"entries": entries, "total": total, "offset": offset, "limit": limit}
+    _cache_set(key, result)
+    return result
 
 
 def get_entry(entry_id: str, room: Optional[str] = None) -> dict:
+    key = f"entry:{entry_id}:{room}"
+    cached = _cache_get(key)
+    if cached is not _MISSING:
+        return cached
     args: dict = {"entry_id": entry_id}
     if room:
         args["room"] = room
@@ -212,6 +246,7 @@ def get_entry(entry_id: str, room: Optional[str] = None) -> dict:
         return {"error": "entry not found"}
     entry = dict(rows[0])
     entry["tags"] = _parse_tags(entry.get("tags"))
+    _cache_set(key, entry)
     return entry
 
 
