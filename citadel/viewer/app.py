@@ -4,6 +4,7 @@ import logging
 import os
 import re
 import sys
+import urllib.parse
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -14,8 +15,6 @@ _here = Path(__file__).parent
 load_dotenv(_here / ".env")
 
 # Strip ANSI escape codes from all output.
-# Werkzeug's startup banner is printed via click.secho() which writes directly
-# to stderr and ignores logging configuration and NO_COLOR when stdout is a TTY.
 _ANSI = re.compile(r'\x1b\[[0-9;]*[mGKHFABCDJsu]')
 
 class _AnsiStripper:
@@ -46,34 +45,91 @@ with app.app_context():
 
 
 def _index_ctx(**kwargs) -> dict:
-    """Base context for all index.html renders — rooms + tags for the sidebar."""
+    """Base context for all index.html renders — rooms for the sidebar."""
     manifest = data.get_manifest()
-    return dict(rooms=manifest.get("rooms", []), tags=data.get_tags(), **kwargs)
+    return dict(rooms=manifest.get("rooms", []), **kwargs)
+
+
+def _page_range(current: int, total: int, window: int = 2) -> list:
+    """Page numbers with ellipsis for large ranges."""
+    if total <= 1:
+        return [1] if total == 1 else []
+    pages: list = []
+    for p in range(1, total + 1):
+        if p == 1 or p == total or abs(p - current) <= window:
+            pages.append(p)
+        elif not pages or pages[-1] != "...":
+            pages.append("...")
+    return pages
 
 
 @app.route("/")
 def index():
-    return render_template("index.html", **_index_ctx())
+    return redirect(url_for("entries_view"))
+
+
+@app.route("/entries")
+def entries_view():
+    status = request.args.get("status", "active")
+    room = request.args.get("room") or None
+    tag = request.args.get("tag") or None
+    q = request.args.get("q", "").strip()
+    page = max(1, request.args.get("page", 1, type=int))
+    per_page = 25
+    offset = (page - 1) * per_page
+
+    if q:
+        search_result = data.search(q, room=room, status=status, limit=50)
+        entries = search_result.get("results", [])
+        result = {"entries": entries, "total": len(entries), "offset": 0, "limit": 50}
+        total_pages = 1
+    else:
+        result = data.get_all_entries(status=status, limit=per_page, offset=offset, room=room, tag=tag)
+        total = result.get("total", 0)
+        total_pages = max(1, (total + per_page - 1) // per_page)
+
+    page_range = _page_range(page, total_pages)
+
+    fparams: dict = {}
+    if room:
+        fparams["room"] = room
+    if tag:
+        fparams["tag"] = tag
+    if status != "active":
+        fparams["status"] = status
+    if q:
+        fparams["q"] = q
+    filter_qs = urllib.parse.urlencode(fparams)
+
+    manifest = data.get_manifest()
+    all_rooms = [r["name"] for r in manifest.get("rooms", [])]
+    filter_tags = data.get_tags(status=status)
+
+    ctx = _index_ctx(
+        active_room=room,
+        entries_result=result,
+        entries_status=status,
+        entries_room=room,
+        entries_tag=tag,
+        entries_q=q,
+        entries_page=page,
+        entries_total_pages=total_pages,
+        entries_page_range=page_range,
+        entries_per_page=per_page,
+        entries_filter_qs=filter_qs,
+        all_rooms=all_rooms,
+        filter_tags=filter_tags,
+    )
+    if request.headers.get("HX-Request"):
+        return render_template("_entries.html", **ctx)
+    return render_template("index.html", **ctx)
 
 
 @app.route("/room/<room_name>")
 def room_view(room_name: str):
     status = request.args.get("status", "active")
-    offset = int(request.args.get("offset", 0))
-    result = data.get_room(room_name, status=status, limit=50, offset=offset)
-    if "error" in result:
-        abort(404)
-    if request.headers.get("HX-Request"):
-        return render_template("_entries.html", room=room_name, result=result, status=status)
-    return render_template(
-        "index.html",
-        **_index_ctx(
-            active_room=room_name,
-            entries_room=room_name,
-            entries_result=result,
-            entries_status=status,
-        ),
-    )
+    page = request.args.get("page", 1, type=int)
+    return redirect(url_for("entries_view", room=room_name, status=status, page=page))
 
 
 @app.route("/entry/<entry_id>")
@@ -93,14 +149,7 @@ def entry_view(entry_id: str):
 @app.route("/tag/<tag_name>")
 def tag_view(tag_name: str):
     status = request.args.get("status", "active")
-    offset = int(request.args.get("offset", 0))
-    result = data.get_entries_by_tag(tag_name, status=status, limit=50, offset=offset)
-    if request.headers.get("HX-Request"):
-        return render_template("_tag_entries.html", tag=tag_name, result=result, status=status)
-    return render_template(
-        "index.html",
-        **_index_ctx(active_tag=tag_name, tag_result=result, tag_status=status),
-    )
+    return redirect(url_for("entries_view", tag=tag_name, status=status))
 
 
 @app.route("/todos")

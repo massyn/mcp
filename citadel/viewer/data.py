@@ -394,6 +394,33 @@ def get_open_heatmap(room: Optional[str] = None, statuses: tuple = ("open", "in_
     }
 
 
+def get_all_entries(
+    status: str = "active",
+    limit: int = 25,
+    offset: int = 0,
+    room: Optional[str] = None,
+    tag: Optional[str] = None,
+) -> dict:
+    """Fetch entries across all rooms (or filtered by room/tag), newest first."""
+    if tag:
+        return get_entries_by_tag(tag, status=status, limit=limit, offset=offset)
+    if room:
+        return get_room(room, status=status, limit=limit, offset=offset)
+    manifest = get_manifest()
+    all_entries: list[dict] = []
+    for room_info in manifest.get("rooms", []):
+        result = get_room(room_info["name"], status=status, limit=500)
+        all_entries.extend(result.get("entries", []))
+    all_entries.sort(key=lambda e: e.get("updated_on") or "", reverse=True)
+    total = len(all_entries)
+    return {
+        "entries": all_entries[offset : offset + limit],
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    }
+
+
 def get_entries_by_tag(tag: str, status: str = "active", limit: int = 50, offset: int = 0) -> dict:
     manifest = get_manifest()
     matched: list[dict] = []

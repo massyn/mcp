@@ -1,86 +1,11 @@
 {% extends "base.html" %}
 
-{% block title %}{% if active_room %}{{ active_room }} — {% elif active_tag %}#{{ active_tag }} — {% endif %}Citadel{% endblock %}
-
-{% block sidebar %}
-<div class="d-flex gap-1 border-bottom mb-2 pb-2">
-    <button id="tab-rooms" class="btn btn-sm flex-grow-1" onclick="showSidebarTab('rooms')">Rooms</button>
-    <button id="tab-tags"  class="btn btn-sm flex-grow-1" onclick="showSidebarTab('tags')">Tags</button>
-</div>
-
-<div id="sidebar-rooms">
-    {% for room in rooms %}
-    <a class="nav-link room-link py-1 px-2 d-flex justify-content-between align-items-center"
-       href="/room/{{ room.name }}"
-       hx-get="/room/{{ room.name }}"
-       hx-target="#main-content"
-       hx-push-url="true">
-        <span class="text-truncate me-1">{{ room.name }}</span>
-        <span class="badge bg-secondary rounded-pill flex-shrink-0">{{ room.entry_count }}</span>
-    </a>
-    {% endfor %}
-</div>
-
-<div id="sidebar-tags" style="display:none">
-    {% if tags %}
-    {% for tag, count in tags %}
-    <a class="nav-link room-link tag-link py-1 px-2 d-flex justify-content-between align-items-center"
-       href="/tag/{{ tag | urlencode }}"
-       hx-get="/tag/{{ tag | urlencode }}"
-       hx-target="#main-content"
-       hx-push-url="true">
-        <span class="text-truncate me-1">{{ tag }}</span>
-        <span class="badge bg-primary rounded-pill flex-shrink-0" style="opacity:.7">{{ count }}</span>
-    </a>
-    {% endfor %}
-    {% else %}
-    <p class="text-muted small px-2">No tags found.</p>
-    {% endif %}
-</div>
-
-<script>
-function showSidebarTab(tab) {
-    var isRooms = tab === 'rooms';
-    var btnRooms = document.getElementById('tab-rooms');
-    var btnTags  = document.getElementById('tab-tags');
-    var panelRooms = document.getElementById('sidebar-rooms');
-    var panelTags  = document.getElementById('sidebar-tags');
-    if (!btnRooms) return;
-    btnRooms.className = 'btn btn-sm flex-grow-1' + (isRooms ? ' btn-secondary' : '');
-    btnTags.className  = 'btn btn-sm flex-grow-1' + (isRooms ? '' : ' btn-secondary');
-    panelRooms.style.display = isRooms ? '' : 'none';
-    panelTags.style.display  = isRooms ? 'none' : '';
-}
-
-// Auto-select the correct tab based on current URL
-function syncSidebarTab() {
-    var path = window.location.pathname;
-    showSidebarTab(path.startsWith('/tag/') ? 'tags' : 'rooms');
-}
-
-document.addEventListener('DOMContentLoaded', syncSidebarTab);
-document.body.addEventListener('htmx:afterSettle', syncSidebarTab);
-</script>
-{% endblock %}
+{% block title %}{% if entries_room %}{{ entries_room }} — {% elif entries_tag %}#{{ entries_tag }} — {% elif entry is defined and entry %}{{ entry.title }} — {% endif %}Citadel{% endblock %}
 
 {% block content %}
-{% if entry %}
+{% if entry is defined and entry %}
     {% include "_entry.html" %}
-{% elif entries_result %}
-    {% with room=entries_room, result=entries_result, status=entries_status %}
-    {% include "_entries.html" %}
-    {% endwith %}
-{% elif tag_result %}
-    {% with tag=active_tag, result=tag_result, status=tag_status %}
-    {% include "_tag_entries.html" %}
-    {% endwith %}
 {% else %}
-<div class="text-center text-muted pt-5 mt-4">
-    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" fill="currentColor" class="bi bi-archive mb-3 opacity-25" viewBox="0 0 16 16">
-        <path d="M0 2a1 1 0 0 1 1-1h14a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1v7.5a2.5 2.5 0 0 1-2.5 2.5h-9A2.5 2.5 0 0 1 1 12.5V5a1 1 0 0 1-1-1zm2 3v7.5A1.5 1.5 0 0 0 3.5 14h9a1.5 1.5 0 0 0 1.5-1.5V5zm13-3H1v2h14zM5 7.5a.5.5 0 0 1 .5-.5h5a.5.5 0 0 1 0 1h-5a.5.5 0 0 1-.5-.5"/>
-    </svg>
-    <h5>Select a room or tag</h5>
-    <p class="text-muted small">{{ rooms|length }} room{{ 's' if rooms|length != 1 else '' }}, {{ tags|length }} tag{{ 's' if tags|length != 1 else '' }}</p>
-</div>
+    {% include "_entries.html" %}
 {% endif %}
 {% endblock %}

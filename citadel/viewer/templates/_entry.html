@@ -2,8 +2,8 @@
     <nav aria-label="breadcrumb" class="mb-1">
         <ol class="breadcrumb mb-1">
             <li class="breadcrumb-item">
-                <a href="/room/{{ entry.room }}"
-                   hx-get="/room/{{ entry.room }}"
+                <a href="/entries?room={{ entry.room | urlencode }}"
+                   hx-get="/entries?room={{ entry.room | urlencode }}"
                    hx-target="#main-content"
                    hx-push-url="true">{{ entry.room }}</a>
             </li>
