@@ -348,6 +348,17 @@ def get_tags(status: str = "active") -> list[tuple[str, int]]:
     return sorted(tag_counts.items())
 
 
+def _ts_to_local_date(ts: str) -> str:
+    """Convert a UTC ISO timestamp to a local date string using the system timezone."""
+    if not ts:
+        return ""
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        return dt.astimezone().date().isoformat()
+    except (ValueError, OverflowError):
+        return ts[:10]
+
+
 def get_burnup_data(room: Optional[str] = None, days: int = 14) -> dict:
     from datetime import date, timedelta
 
@@ -372,8 +383,8 @@ def get_burnup_data(room: Optional[str] = None, days: int = 14) -> dict:
         closed_count = 0
         created_count = 0
         for t in all_todos:
-            created = (t.get("created_on") or "")[:10]
-            completed = (t.get("completed_on") or "")[:10]
+            created = _ts_to_local_date(t.get("created_on") or "")
+            completed = _ts_to_local_date(t.get("completed_on") or "")
             if not created or created > day:
                 continue
             if created == day:

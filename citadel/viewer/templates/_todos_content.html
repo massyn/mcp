@@ -1,4 +1,4 @@
-{% set priority_colours = {1: 'danger', 2: 'warning text-dark', 3: 'secondary', 4: 'success', 5: 'secondary'} %}
+{% set priority_colours = {1: 'danger', 2: 'warning text-dark', 3: 'primary', 4: 'success', 5: 'secondary'} %}
 {% set priority_labels  = {1: 'Critical', 2: 'High', 3: 'Medium', 4: 'Low', 5: 'Nice-to-have'} %}
 {% set status_colours   = {'open': 'primary', 'in_progress': 'warning text-dark', 'blocked': 'danger', 'done': 'success', 'cancelled': 'secondary', 'deferred': 'info text-dark'} %}
 
@@ -98,7 +98,7 @@
                 <td data-val="{{ todo.status }}">
                     <span class="badge bg-{{ status_colours.get(todo.status, 'secondary') }}">{{ todo.status }}</span>
                 </td>
-                <td data-val="{{ todo.due_date or 'zzz' }}" class="small text-muted">
+                <td data-val="{{ todo.due_date or 'zzz' }}" class="due-date-cell small text-muted">
                     {{ todo.due_date or '—' }}
                 </td>
             </tr>
@@ -187,6 +187,57 @@
 </style>
 <script>
 (function () {
+    // ── Due-date highlighting ─────────────────────────────────────────
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+    var soonLimit = new Date(today.getTime() + 2 * 86400000);
+    document.querySelectorAll('.todo-row').forEach(function (row) {
+        var due = row.dataset.due;
+        if (!due) return;
+        var cell = row.querySelector('.due-date-cell');
+        if (!cell) return;
+        var dueDate = new Date(due + 'T00:00:00');
+        if (dueDate < today) {
+            cell.classList.remove('text-muted');
+            cell.classList.add('text-danger', 'fw-semibold');
+        } else if (dueDate <= soonLimit) {
+            cell.classList.remove('text-muted');
+            cell.classList.add('text-warning', 'fw-semibold');
+        }
+    });
+
+    // ── Filter-state persistence ──────────────────────────────────────
+    var filterForm = document.getElementById('todo-filter');
+    if (filterForm) {
+        filterForm.addEventListener('change', function () {
+            var state = {
+                room: filterForm.querySelector('[name="room"]').value,
+                status: Array.from(filterForm.querySelectorAll('[name="status"]:checked')).map(function (cb) { return cb.value; }),
+                priority_max: filterForm.querySelector('[name="priority_max"]').value
+            };
+            try { localStorage.setItem('citadel-todo-filter', JSON.stringify(state)); } catch (e) {}
+        });
+
+        if (!window._citadelFilterRestored) {
+            window._citadelFilterRestored = true;
+            var params = new URLSearchParams(window.location.search);
+            if (!params.has('status') && !params.has('room') && !params.has('priority_max')) {
+                var saved = null;
+                try { saved = JSON.parse(localStorage.getItem('citadel-todo-filter') || 'null'); } catch (e) {}
+                if (saved) {
+                    if (saved.room) filterForm.querySelector('[name="room"]').value = saved.room;
+                    if (saved.priority_max) filterForm.querySelector('[name="priority_max"]').value = saved.priority_max;
+                    if (saved.status && saved.status.length) {
+                        filterForm.querySelectorAll('[name="status"]').forEach(function (cb) {
+                            cb.checked = saved.status.indexOf(cb.value) !== -1;
+                        });
+                    }
+                    htmx.trigger(filterForm, 'change');
+                }
+            }
+        }
+    }
+
     // ── Sorting ──────────────────────────────────────────────────────
     var table = document.getElementById('todo-table');
     if (table) {

@@ -22,6 +22,10 @@ parameters:
     required: false
     default: 0
     description: Number of entries to skip (for pagination)
+  updated_after:
+    type: string
+    required: false
+    description: "Only return entries updated after this ISO datetime (e.g. 2026-06-04T10:00:00Z). Use for incremental sync."
 returns: Entries with id, title, summary, tags, status, updated_on, plus total_count for pagination
 examples:
   - room: my-project
@@ -29,10 +33,15 @@ examples:
     status: archived
     limit: 20
     offset: 20
+  - room: my-project
+    updated_after: "2026-06-04T10:00:00Z"
 ---
 SELECT id, title, summary, tags, status, updated_on,
        COUNT(*) OVER() AS total_count
 FROM entries
 WHERE room = '{{ room }}' AND status = '{{ status or "active" }}'
+{% if updated_after is not none %}
+AND updated_on > '{{ updated_after }}'
+{% endif %}
 ORDER BY updated_on DESC
 LIMIT {{ limit or 50 }} OFFSET {{ offset or 0 }}

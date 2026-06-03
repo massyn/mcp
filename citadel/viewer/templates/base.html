@@ -110,7 +110,7 @@
         /* Priority stripe */
         .priority-1 { border-left: 3px solid #ef4444; }
         .priority-2 { border-left: 3px solid #f97316; }
-        .priority-3 { border-left: 3px solid #64748b; }
+        .priority-3 { border-left: 3px solid var(--cs-accent); }
         .priority-4 { border-left: 3px solid #22c55e; }
         .priority-5 { border-left: 3px solid #475569; }
     </style>
@@ -131,9 +131,9 @@
                        autocomplete="off"
                        style="background-color:var(--cs-surface);border-color:var(--cs-border);color:var(--cs-text)">
             </div>
-            <a class="btn btn-outline-light btn-sm flex-shrink-0" data-nav-base="/entries"  href="/entries{% if _nav_room %}?room={{ _nav_room }}{% endif %}">Entries</a>
             <a class="btn btn-outline-light btn-sm flex-shrink-0" data-nav-base="/todos"    href="/todos{% if _nav_room %}?room={{ _nav_room }}{% endif %}">Todos</a>
             <a class="btn btn-outline-light btn-sm flex-shrink-0" data-nav-base="/velocity" href="/velocity{% if _nav_room %}?room={{ _nav_room }}{% endif %}">Velocity</a>
+            <a class="btn btn-outline-light btn-sm flex-shrink-0" data-nav-base="/entries"  href="/entries{% if _nav_room %}?room={{ _nav_room }}{% endif %}">Entries</a>
         </div>
     </nav>
 

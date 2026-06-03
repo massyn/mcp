@@ -65,7 +65,7 @@ def _page_range(current: int, total: int, window: int = 2) -> list:
 
 @app.route("/")
 def index():
-    return redirect(url_for("entries_view"))
+    return redirect(url_for("todos_view"))
 
 
 @app.route("/entries")

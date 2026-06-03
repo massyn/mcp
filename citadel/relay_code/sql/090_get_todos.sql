@@ -33,6 +33,10 @@ parameters:
     required: false
     default: asc
     description: "Sort direction: asc or desc. Defaults to asc."
+  updated_after:
+    type: string
+    required: false
+    description: "Only return todos updated after this ISO datetime (e.g. 2026-06-04T10:00:00Z). Use for incremental sync."
 returns: List of todos with all fields
 examples:
   - room: my-project
@@ -43,6 +47,7 @@ examples:
     sort_order: desc
   - sort_by: updated_on
     sort_order: desc
+  - updated_after: "2026-06-04T10:00:00Z"
 ---
 SELECT id, room, title, detail, priority, due_date, status, entry_id, completed_on, created_on, updated_on
 FROM todos
@@ -60,6 +65,9 @@ AND priority <= {{ priority_max }}
 {% endif %}
 {% if due_before is not none %}
 AND due_date <= '{{ due_before }}'
+{% endif %}
+{% if updated_after is not none %}
+AND updated_on > '{{ updated_after }}'
 {% endif %}
 {% if sort_by is not none %}
 ORDER BY
