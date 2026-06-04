@@ -27,6 +27,7 @@ _session_id: str | None = None
 _req_lock = threading.Lock()
 _req_id = 0
 
+# Kept for get_entry (full detail) only — everything else uses the mirror.
 _CACHE_TTL = int(os.environ.get("CITADEL_CACHE_TTL", "300"))
 _cache: dict[str, tuple[float, Any]] = {}
 _cache_lock = threading.Lock()
@@ -120,7 +121,6 @@ def _ensure_session() -> str | None:
             _log.info("MCP session established: %s", _session_id or "(stateless)")
         except Exception as exc:
             _log.error("Failed to initialise MCP session: %s", exc)
-            # Leave _session_initialized = False so the next request retries
         return _session_id
 
 
@@ -187,28 +187,243 @@ def _parse_tags(raw) -> list:
         return []
 
 
+def _ts_to_local_date(ts: str) -> str:
+    """Convert a UTC ISO timestamp to a local date string using the system timezone."""
+    if not ts:
+        return ""
+    try:
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        return dt.astimezone().date().isoformat()
+    except (ValueError, OverflowError):
+        return ts[:10]
+
+
+# ---------------------------------------------------------------------------
+# In-memory mirror cache
+# ---------------------------------------------------------------------------
+
+_SYNC_TODOS_INTERVAL = int(os.environ.get("VIEWER_TODO_SYNC", "30"))
+_SYNC_ENTRIES_INTERVAL = int(os.environ.get("VIEWER_ENTRY_SYNC", "300"))
+_ALL_TODO_STATUSES = ("open", "in_progress", "blocked", "done", "cancelled", "deferred")
+
+
+class _MirrorCache:
+    """
+    Warm in-memory mirror of all todos and active entries.
+
+    On startup: full load via MCP.
+    Every VIEWER_TODO_SYNC seconds (default 30): delta sync todos via updated_after.
+    Every VIEWER_ENTRY_SYNC seconds (default 300): delta sync entries via updated_after.
+    After any write: todos are invalidated so the next request picks up the change.
+    """
+
+    def __init__(self) -> None:
+        self._todos: dict[int, dict] = {}
+        self._entries: dict[str, dict] = {}   # summary-level only; keyed by entry id
+        self._rooms: list[dict] = []
+        self._last_todo_sync: str | None = None
+        self._last_entry_sync: str | None = None
+        self._todo_ts: float = 0.0
+        self._entry_ts: float = 0.0
+        self._lock = threading.Lock()
+        self.ready = False
+
+    @staticmethod
+    def _utcnow() -> str:
+        return datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    def warm_up(self) -> None:
+        _log.info("Mirror cache: warming up...")
+        try:
+            self._full_sync_todos()
+            self._full_sync_entries()
+            self.ready = True
+            _log.info("Mirror cache: ready — %d todos, %d entries",
+                      len(self._todos), len(self._entries))
+        except Exception:
+            _log.exception("Mirror cache: warm-up failed; live MCP calls will be used instead")
+
+    def _full_sync_todos(self) -> None:
+        todos: dict[int, dict] = {}
+        for s in _ALL_TODO_STATUSES:
+            rows = _call("get_todos", status=s, limit=2000) or []
+            if isinstance(rows, list):
+                for r in rows:
+                    todos[r["id"]] = r
+        self._todos = todos
+        self._last_todo_sync = self._utcnow()
+        self._todo_ts = time.monotonic()
+
+    def _full_sync_entries(self) -> None:
+        rooms_raw = _call("get_manifest") or []
+        if not isinstance(rooms_raw, list):
+            return
+        rooms = sorted(rooms_raw, key=lambda r: r["name"].lower())
+        entries: dict[str, dict] = {}
+        for room_info in rooms:
+            room_name = room_info["name"]
+            rows = _call("get_room", room=room_name, status="active", limit=500) or []
+            if isinstance(rows, list):
+                for r in rows:
+                    e = dict(r)
+                    e.pop("total_count", None)
+                    e["tags"] = _parse_tags(e.get("tags"))
+                    e.setdefault("room", room_name)
+                    entries[e["id"]] = e
+        self._entries = entries
+        self._rooms = rooms
+        self._last_entry_sync = self._utcnow()
+        self._entry_ts = time.monotonic()
+
+    def _delta_sync_todos(self) -> None:
+        since = self._last_todo_sync
+        new_sync = self._utcnow()
+        changed = 0
+        for s in _ALL_TODO_STATUSES:
+            rows = _call("get_todos", status=s, limit=500, updated_after=since) or []
+            if isinstance(rows, list):
+                for r in rows:
+                    self._todos[r["id"]] = r
+                    changed += 1
+        self._last_todo_sync = new_sync
+        self._todo_ts = time.monotonic()
+        if changed:
+            _log.info("Mirror cache: todo delta — %d changed", changed)
+
+    def _delta_sync_entries(self) -> None:
+        since = self._last_entry_sync
+        new_sync = self._utcnow()
+        rooms_raw = _call("get_manifest") or []
+        if isinstance(rooms_raw, list):
+            self._rooms = sorted(rooms_raw, key=lambda r: r["name"].lower())
+            changed = 0
+            for room_info in self._rooms:
+                room_name = room_info["name"]
+                rows = _call("get_room", room=room_name, status="active",
+                             limit=500, updated_after=since) or []
+                if isinstance(rows, list):
+                    for r in rows:
+                        e = dict(r)
+                        e.pop("total_count", None)
+                        e["tags"] = _parse_tags(e.get("tags"))
+                        e.setdefault("room", room_name)
+                        self._entries[e["id"]] = e
+                        changed += 1
+            if changed:
+                _log.info("Mirror cache: entry delta — %d changed", changed)
+        self._last_entry_sync = new_sync
+        self._entry_ts = time.monotonic()
+
+    def refresh_if_stale(self) -> None:
+        if not self.ready:
+            return
+        now = time.monotonic()
+        todo_stale = now - self._todo_ts >= _SYNC_TODOS_INTERVAL
+        entry_stale = now - self._entry_ts >= _SYNC_ENTRIES_INTERVAL
+        if not todo_stale and not entry_stale:
+            return
+        if not self._lock.acquire(blocking=False):
+            return  # another thread is already syncing
+        try:
+            now = time.monotonic()
+            if now - self._todo_ts >= _SYNC_TODOS_INTERVAL:
+                self._delta_sync_todos()
+            if now - self._entry_ts >= _SYNC_ENTRIES_INTERVAL:
+                self._delta_sync_entries()
+        except Exception:
+            _log.exception("Mirror cache: refresh failed")
+        finally:
+            self._lock.release()
+
+    def invalidate_todos(self) -> None:
+        """Force a todo sync on the next request — call after any write."""
+        self._todo_ts = 0.0
+
+    # --- Query helpers ---
+
+    def get_manifest(self) -> dict:
+        return {"rooms": list(self._rooms)}
+
+    def get_todos(
+        self,
+        room: Optional[str] = None,
+        status_filter: Optional[list] = None,
+        priority_max: Optional[int] = None,
+        priority_min: Optional[int] = None,
+        limit: int = 100,
+    ) -> list[dict]:
+        todos = list(self._todos.values())
+        if room:
+            todos = [t for t in todos if t.get("room") == room]
+        if status_filter:
+            allowed = set(status_filter)
+            todos = [t for t in todos if t.get("status") in allowed]
+        if priority_max is not None:
+            todos = [t for t in todos if t.get("priority", 3) <= priority_max]
+        if priority_min is not None:
+            todos = [t for t in todos if t.get("priority", 3) >= priority_min]
+        todos.sort(key=lambda t: (
+            t.get("priority", 3),
+            t.get("due_date") or "9999-99-99",
+            t.get("created_on") or "",
+        ))
+        return todos[:limit]
+
+    def all_todos(self) -> list[dict]:
+        return list(self._todos.values())
+
+    def get_entries(
+        self,
+        room: Optional[str] = None,
+        status: str = "active",
+        limit: int = 25,
+        offset: int = 0,
+        tag: Optional[str] = None,
+    ) -> tuple[list[dict], int]:
+        entries = list(self._entries.values())
+        if room:
+            entries = [e for e in entries if e.get("room") == room]
+        if status:
+            entries = [e for e in entries if e.get("status") == status]
+        if tag:
+            entries = [e for e in entries if tag in e.get("tags", [])]
+        entries.sort(key=lambda e: e.get("updated_on") or "", reverse=True)
+        total = len(entries)
+        return entries[offset:offset + limit], total
+
+    def get_tags(self, status: str = "active") -> list[tuple[str, int]]:
+        tag_counts: dict[str, int] = {}
+        for e in self._entries.values():
+            if e.get("status") == status:
+                for tag in e.get("tags", []):
+                    tag_counts[tag] = tag_counts.get(tag, 0) + 1
+        return sorted(tag_counts.items())
+
+
+_mirror = _MirrorCache()
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
 def init_schema() -> None:
-    pass  # Schema is managed by the remote MCP server
+    _mirror.warm_up()
+
+
+def refresh_mirror() -> None:
+    _mirror.refresh_if_stale()
 
 
 def get_manifest(tags: Optional[list] = None) -> dict:
-    key = "manifest"
-    cached = _cache_get(key)
-    if cached is not _MISSING:
-        return cached
+    if _mirror.ready:
+        return _mirror.get_manifest()
     rows = _call("get_manifest") or []
-    if not isinstance(rows, list):
-        rows = []
-    result = {"rooms": sorted(rows, key=lambda r: r["name"].lower())}
-    _cache_set(key, result)
-    return result
+    return {"rooms": sorted(rows, key=lambda r: r["name"].lower()) if isinstance(rows, list) else []}
 
 
 def get_room(room: str, status: str = "active", limit: int = 50, offset: int = 0) -> dict:
+    """Direct MCP fetch for a single room — used by get_entry fallback and non-active entry views."""
     key = f"room:{room}:{status}:{limit}:{offset}"
     cached = _cache_get(key)
     if cached is not _MISSING:
@@ -257,6 +472,15 @@ def get_todos(
     priority_min: Optional[int] = None,
     limit: int = 100,
 ) -> dict:
+    if _mirror.ready:
+        return {"todos": _mirror.get_todos(
+            room=room,
+            status_filter=status,
+            priority_max=priority_max,
+            priority_min=priority_min,
+            limit=limit,
+        )}
+    # fallback: live MCP
     statuses = status or ["open"]
     all_todos: list[dict] = []
     seen_ids: set = set()
@@ -296,6 +520,7 @@ def add_todo(
     if due_date:
         args["due_date"] = due_date
     result = _call("add_todo", **args)
+    _mirror.invalidate_todos()
     if isinstance(result, list):
         return result[0] if result else {}
     return result or {}
@@ -323,7 +548,9 @@ def update_todo(
         args["status"] = status
     if room is not None:
         args["room"] = room
-    return _call("update_todo", **args) or {}
+    result = _call("update_todo", **args) or {}
+    _mirror.invalidate_todos()
+    return result
 
 
 def search(query: str, room: Optional[str] = None, status: str = "active", limit: int = 20) -> dict:
@@ -338,6 +565,8 @@ def search(query: str, room: Optional[str] = None, status: str = "active", limit
 
 
 def get_tags(status: str = "active") -> list[tuple[str, int]]:
+    if _mirror.ready:
+        return _mirror.get_tags(status=status)
     manifest = get_manifest()
     tag_counts: dict[str, int] = {}
     for room_info in manifest.get("rooms", []):
@@ -348,17 +577,6 @@ def get_tags(status: str = "active") -> list[tuple[str, int]]:
     return sorted(tag_counts.items())
 
 
-def _ts_to_local_date(ts: str) -> str:
-    """Convert a UTC ISO timestamp to a local date string using the system timezone."""
-    if not ts:
-        return ""
-    try:
-        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
-        return dt.astimezone().date().isoformat()
-    except (ValueError, OverflowError):
-        return ts[:10]
-
-
 def get_burnup_data(room: Optional[str] = None, days: int = 14) -> dict:
     from datetime import date, timedelta
 
@@ -366,14 +584,20 @@ def get_burnup_data(room: Optional[str] = None, days: int = 14) -> dict:
     start = today - timedelta(days=days - 1)
     date_series = [(start + timedelta(days=i)).isoformat() for i in range(days)]
 
-    all_todos: list[dict] = []
-    for s in ("open", "in_progress", "blocked", "done"):
-        args: dict = {"status": s, "limit": 1000}
+    _burnup_statuses = frozenset(("open", "in_progress", "blocked", "done"))
+    if _mirror.ready:
+        all_todos = [t for t in _mirror.all_todos() if t.get("status") in _burnup_statuses]
         if room:
-            args["room"] = room
-        rows = _call("get_todos", **args) or []
-        if isinstance(rows, list):
-            all_todos.extend(rows)
+            all_todos = [t for t in all_todos if t.get("room") == room]
+    else:
+        all_todos = []
+        for s in ("open", "in_progress", "blocked", "done"):
+            args: dict = {"status": s, "limit": 1000}
+            if room:
+                args["room"] = room
+            rows = _call("get_todos", **args) or []
+            if isinstance(rows, list):
+                all_todos.extend(rows)
 
     open_series: list[int] = []
     closed_series: list[int] = []
@@ -406,22 +630,30 @@ def get_open_heatmap(room: Optional[str] = None, statuses: tuple = ("open", "in_
     rooms_seen: list[str] = []
     matrix: dict[str, dict[int, int]] = {}
 
-    for s in statuses:
-        args: dict = {"status": s, "limit": 500}
-        if room:
-            args["room"] = room
-        rows = _call("get_todos", **args) or []
-        if not isinstance(rows, list):
+    if _mirror.ready:
+        source = [
+            t for t in _mirror.all_todos()
+            if t.get("status") in statuses and (not room or t.get("room") == room)
+        ]
+    else:
+        source = []
+        for s in statuses:
+            args: dict = {"status": s, "limit": 500}
+            if room:
+                args["room"] = room
+            rows = _call("get_todos", **args) or []
+            if isinstance(rows, list):
+                source.extend(rows)
+
+    for t in source:
+        room_name = t.get("room", "")
+        priority = t.get("priority", 3)
+        if not room_name:
             continue
-        for r in rows:
-            room_name = r.get("room", "")
-            priority = r.get("priority", 3)
-            if not room_name:
-                continue
-            if room_name not in rooms_seen:
-                rooms_seen.append(room_name)
-                matrix[room_name] = {p: 0 for p in priorities}
-            matrix[room_name][priority] = matrix[room_name].get(priority, 0) + 1
+        if room_name not in rooms_seen:
+            rooms_seen.append(room_name)
+            matrix[room_name] = {p: 0 for p in priorities}
+        matrix[room_name][priority] = matrix[room_name].get(priority, 0) + 1
 
     all_ns = [matrix[rm][p] for rm in rooms_seen for p in priorities]
     max_val = max(all_ns, default=1) or 1
@@ -447,7 +679,11 @@ def get_all_entries(
     room: Optional[str] = None,
     tag: Optional[str] = None,
 ) -> dict:
-    """Fetch entries across all rooms (or filtered by room/tag), newest first."""
+    if _mirror.ready and status == "active":
+        page, total = _mirror.get_entries(room=room, status=status,
+                                           limit=limit, offset=offset, tag=tag)
+        return {"entries": page, "total": total, "offset": offset, "limit": limit}
+    # fallback: live MCP (also handles non-active status views)
     if tag:
         return get_entries_by_tag(tag, status=status, limit=limit, offset=offset)
     if room:
@@ -468,6 +704,9 @@ def get_all_entries(
 
 
 def get_entries_by_tag(tag: str, status: str = "active", limit: int = 50, offset: int = 0) -> dict:
+    if _mirror.ready and status == "active":
+        page, total = _mirror.get_entries(status=status, limit=limit, offset=offset, tag=tag)
+        return {"tag": tag, "total": total, "limit": limit, "offset": offset, "entries": page}
     manifest = get_manifest()
     matched: list[dict] = []
     for room_info in manifest.get("rooms", []):
@@ -479,4 +718,5 @@ def get_entries_by_tag(tag: str, status: str = "active", limit: int = 50, offset
                 matched.append(entry)
     matched.sort(key=lambda e: e.get("updated_on") or "", reverse=True)
     total = len(matched)
-    return {"tag": tag, "total": total, "limit": limit, "offset": offset, "entries": matched[offset:offset + limit]}
+    return {"tag": tag, "total": total, "limit": limit, "offset": offset,
+            "entries": matched[offset:offset + limit]}

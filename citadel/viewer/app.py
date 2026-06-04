@@ -44,6 +44,11 @@ with app.app_context():
     data.init_schema()
 
 
+@app.before_request
+def _sync_mirror():
+    data.refresh_mirror()
+
+
 def _index_ctx(**kwargs) -> dict:
     """Base context for all index.html renders — rooms for the sidebar."""
     manifest = data.get_manifest()
